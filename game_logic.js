@@ -338,10 +338,11 @@ class GameState {
           loser.antiques = loser.antiques.filter(c => c !== card);
           winner.antiques.push(card);
         }
-        addMoney(loser.money, this.dealOffer);
+        // 双方各付各自的报价给对方
+        addMoney(target.money, this.dealOffer);
         deductMoneyExact(initiator.money, this.dealOffer);
         addMoney(initiator.money, this.dealCounter);
-        deductMoneyExact(loser.money, this.dealCounter);
+        deductMoneyExact(target.money, this.dealCounter);
         this._checkCompleteSet(winner.playerId);
         const result = { event: "deal_resolved", tieForcedWinner: winner.playerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
         return [result, this._advanceTurn()].flat();
