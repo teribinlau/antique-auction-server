@@ -407,7 +407,9 @@ class GameState {
   }
 
   _fullPlayerView(p) {
-    return { playerId: p.playerId, playerName: p.playerName, money: p.money, antiques: p.antiques, completeSets: p.completeSets };
+    const money = {};
+    for (const f in p.money) money[String(f)] = p.money[f];
+    return { playerId: p.playerId, playerName: p.playerName, money, antiques: p.antiques, completeSets: p.completeSets };
   }
 
   _opponentView(p) {
