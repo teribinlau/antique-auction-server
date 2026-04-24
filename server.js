@@ -41,13 +41,33 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(raw); } catch { return; }
     const { action } = msg;
 
+    // ── 大厅列表 ──────────────────────────────────────────
+    if (action === "list_rooms") {
+      const list = Object.entries(rooms)
+        .filter(([, r]) => !r.game && r.players.length < 4)
+        .map(([code, r]) => ({
+          roomCode: code,
+          roomName: r.roomName,
+          playerCount: r.players.length,
+          hasPassword: !!r.password,
+        }));
+      send(ws, { event: "room_list", rooms: list });
+      return;
+    }
+
     // ── 创建房间 ──────────────────────────────────────────
     if (action === "create_room") {
       const code = genCode();
-      rooms[code] = { players: [], game: null, bidsCollected: [] };
+      rooms[code] = {
+        players: [],
+        game: null,
+        bidsCollected: [],
+        roomName: msg.roomName || `${msg.playerName || "玩家1"}的房间`,
+        password: msg.password || "",
+      };
       ws._roomCode = code;
       ws._playerName = msg.playerName || "玩家1";
-      send(ws, { event: "room_created", roomCode: code });
+      send(ws, { event: "room_created", roomCode: code, roomName: rooms[code].roomName });
       return;
     }
 
@@ -57,12 +77,13 @@ wss.on("connection", (ws) => {
       if (!room) { send(ws, { event: "error", message: "房间不存在" }); return; }
       if (room.game) { send(ws, { event: "error", message: "游戏已开始" }); return; }
       if (room.players.length >= 4) { send(ws, { event: "error", message: "房间已满" }); return; }
+      if (room.password && room.password !== msg.password) { send(ws, { event: "error", message: "密码错误" }); return; }
       ws._roomCode = msg.roomCode;
       ws._playerName = msg.playerName || `玩家${room.players.length + 1}`;
       const playerId = room.players.length;
       ws._playerId = playerId;
       room.players.push({ ws, playerId, playerName: ws._playerName });
-      send(ws, { event: "joined_room", roomCode: msg.roomCode, playerId, playerCount: room.players.length });
+      send(ws, { event: "joined_room", roomCode: msg.roomCode, roomName: room.roomName, playerId, playerCount: room.players.length, players: room.players.map(p => p.playerName) });
       broadcast(room, { event: "player_joined", playerName: ws._playerName, playerCount: room.players.length });
       return;
     }
