@@ -135,28 +135,20 @@ wss.on("connection", (ws) => {
     // ── 出价 ──────────────────────────────────────────────
     if (action === "place_bid") {
       if (game.phase !== "AUCTION") return;
-      const auctionerId = game.currentPlayer().playerId;
-      if (playerId === auctionerId) return;
+      if (playerId === game.currentPlayer().playerId) return;
       const ev = game.placeBid(playerId, msg.amount);
       if (ev.error) return;
       dispatchEvents(room, ev);
-      const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
-      const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
-      if (allDone) dispatchEvents(room, game.resolveBids());
       return;
     }
 
     // ── 放弃竞价 ──────────────────────────────────────────
     if (action === "pass_bid") {
       if (game.phase !== "AUCTION") return;
-      const auctionerId = game.currentPlayer().playerId;
-      if (playerId === auctionerId) return;
+      if (playerId === game.currentPlayer().playerId) return;
       const ev = game.passBid(playerId);
       if (ev.error) return;
       dispatchEvents(room, ev);
-      const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
-      const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
-      if (allDone) dispatchEvents(room, game.resolveBids());
       return;
     }
 

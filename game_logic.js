@@ -149,6 +149,8 @@ class GameState {
     this.passed = {}; // playerId -> bool
     this.highestBidder = -1;
     this.highestBid = 0;
+    this.bidOrder = []; // 顺位出价列表（不含拍卖人）
+    this.bidTurnIndex = 0; // 当前轮到第几位
 
     // 私盘状态
     this.dealInitiator = -1;
@@ -211,8 +213,19 @@ class GameState {
     this.passed = {};
     this.highestBid = 0;
     this.highestBidder = -1;
+
+    // 顺位：从拍卖人下一位开始，绕一圈，不含拍卖人
+    const auctionerId = this.currentPlayer().playerId;
+    const n = this.players.length;
+    const startIdx = (this.currentPlayerIndex + 1) % n;
+    this.bidOrder = [];
+    for (let i = 0; i < n - 1; i++) {
+      this.bidOrder.push(this.players[(startIdx + i) % n].playerId);
+    }
+    this.bidTurnIndex = 0;
+
     for (const p of this.players) {
-      this.passed[p.playerId] = (p.playerId === this.currentPlayer().playerId);
+      this.passed[p.playerId] = (p.playerId === auctionerId);
     }
 
     const events = [];
@@ -222,32 +235,39 @@ class GameState {
       for (const p of this.players) addMoney(p.money, splitIntoBills(bonus));
       events.push({ event: "silver_bonus", bonus, count: this.silverIngotCount });
     }
-    events.push({ event: "auction_started", card: this.auctionCard, deckSize: this.deck.length, auctionerId: this.currentPlayer().playerId });
+    events.push({ event: "auction_started", card: this.auctionCard, deckSize: this.deck.length, auctionerId });
+    events.push({ event: "bid_turn", playerId: this.bidOrder[0], auctionerId, highestBid: 0 });
     return events;
   }
 
   placeBid(playerId, amount) {
-    if (this.passed[playerId] === true) return { error: "已放弃竞价" };
+    if (this.bidOrder[this.bidTurnIndex] !== playerId) return { error: "还没轮到你" };
     if (this.bids[playerId] !== undefined) return { error: "已出价" };
     this.bids[playerId] = amount;
     this.passed[playerId] = false;
-    return { event: "bid_placed", playerId, amount };
+    if (amount > this.highestBid) { this.highestBid = amount; this.highestBidder = playerId; }
+    const bidEvent = { event: "bid_placed", playerId, amount };
+    return [bidEvent, ...this._advanceBidTurn()];
   }
 
   passBid(playerId) {
+    if (this.bidOrder[this.bidTurnIndex] !== playerId) return { error: "还没轮到你" };
     if (this.bids[playerId] !== undefined) return { error: "已出价，不能放弃" };
     this.passed[playerId] = true;
-    return { event: "bid_passed", playerId };
+    const passEvent = { event: "bid_passed", playerId };
+    return [passEvent, ...this._advanceBidTurn()];
   }
 
-  resolveBids() {
-    this.highestBid = 0;
-    this.highestBidder = -1;
-    for (const pid in this.bids) {
-      if (this.passed[pid]) continue;
-      const amount = this.bids[pid];
-      if (amount > this.highestBid) { this.highestBid = amount; this.highestBidder = parseInt(pid); }
+  _advanceBidTurn() {
+    this.bidTurnIndex++;
+    if (this.bidTurnIndex < this.bidOrder.length) {
+      const nextId = this.bidOrder[this.bidTurnIndex];
+      return [{ event: "bid_turn", playerId: nextId, auctionerId: this.currentPlayer().playerId, highestBid: this.highestBid }];
     }
+    return [this._resolveBids()].flat();
+  }
+
+  _resolveBids() {
     if (this.highestBidder === -1) {
       this._giveCardTo(this.currentPlayer().playerId, this.auctionCard);
       this.auctionCard = null;
