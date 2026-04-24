@@ -93,7 +93,12 @@ wss.on("connection", (ws) => {
 
     // ── 状态同步 ──────────────────────────────────────────
     if (action === "request_state") {
-      if (room.game) send(ws, { event: "state_update", state: room.game.getViewFor(ws._playerId) });
+      if (room.game) {
+        send(ws, { event: "state_update", state: room.game.getViewFor(ws._playerId) });
+        if (room.game.phase !== "GAME_OVER") {
+          send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
+        }
+      }
       return;
     }
 
