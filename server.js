@@ -1,8 +1,16 @@
+const http = require("http");
 const { WebSocketServer } = require("ws");
 const { GameState } = require("./game_logic");
 
 const PORT = process.env.PORT || 3000;
-const wss = new WebSocketServer({ port: PORT });
+
+const httpServer = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("ok");
+});
+
+const wss = new WebSocketServer({ server: httpServer });
+httpServer.listen(PORT, () => console.log(`服务器运行在 ws://localhost:${PORT}`));
 
 // rooms: roomCode -> { players: [{ws, playerId, playerName}], game: GameState|null, bidsCollected: [] }
 const rooms = {};
@@ -210,4 +218,3 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log(`服务器运行在 ws://localhost:${PORT}`);
