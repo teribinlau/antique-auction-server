@@ -167,8 +167,16 @@ class GameState {
     if (this.deck.length === 0 && !this._canAnyPrivateDeal()) {
       return this._endGame();
     }
-    if (this.deck.length === 0 && this.getPrivateDealTargets(this.currentPlayer().playerId).length === 0) {
-      return this._advanceTurn();
+    if (this.deck.length === 0) {
+      // 找到下一个有私盘机会的玩家，最多遍历一圈
+      for (let i = 0; i < this.players.length; i++) {
+        if (this.getPrivateDealTargets(this.currentPlayer().playerId).length > 0) {
+          this.phase = "AUCTION";
+          return { event: "turn_changed", playerId: this.currentPlayer().playerId, deckSize: 0 };
+        }
+        this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
+      }
+      return this._endGame();
     }
     this.phase = "AUCTION";
     return { event: "turn_changed", playerId: this.currentPlayer().playerId, deckSize: this.deck.length };
@@ -214,17 +222,20 @@ class GameState {
       for (const p of this.players) addMoney(p.money, splitIntoBills(bonus));
       events.push({ event: "silver_bonus", bonus, count: this.silverIngotCount });
     }
-    events.push({ event: "auction_started", card: this.auctionCard, deckSize: this.deck.length });
+    events.push({ event: "auction_started", card: this.auctionCard, deckSize: this.deck.length, auctionerId: this.currentPlayer().playerId });
     return events;
   }
 
   placeBid(playerId, amount) {
+    if (this.passed[playerId] === true) return { error: "已放弃竞价" };
+    if (this.bids[playerId] !== undefined) return { error: "已出价" };
     this.bids[playerId] = amount;
     this.passed[playerId] = false;
     return { event: "bid_placed", playerId, amount };
   }
 
   passBid(playerId) {
+    if (this.bids[playerId] !== undefined) return { error: "已出价，不能放弃" };
     this.passed[playerId] = true;
     return { event: "bid_passed", playerId };
   }
@@ -243,7 +254,7 @@ class GameState {
       return [{ event: "no_bids", winnerId: this.currentPlayer().playerId }, this._advanceTurn()].flat();
     }
     this.phase = "SNIPE";
-    return { event: "snipe_prompt", card: this.auctionCard, highestBid: this.highestBid, highestBidder: this.highestBidder };
+    return { event: "snipe_prompt", card: this.auctionCard, highestBid: this.highestBid, highestBidder: this.highestBidder, auctionerId: this.currentPlayer().playerId };
   }
 
   actionSnipe(doSnipe, paid) {
@@ -257,9 +268,11 @@ class GameState {
       return [{ event: "snipe_success", winnerId: this.currentPlayer().playerId }, this._advanceTurn()].flat();
     } else {
       const bidder = this.getPlayer(this.highestBidder);
-      if (paidTotal < this.highestBid) return this._failPayment(bidder.playerId);
-      deductMoneyExact(bidder.money, paid);
-      addMoney(this.currentPlayer().money, paid);
+      const autoPaid = splitIntoBills(this.highestBid);
+      const bidderTotal = getTotalMoney(bidder.money);
+      if (bidderTotal < this.highestBid) return this._failPayment(bidder.playerId);
+      deductMoneyExact(bidder.money, autoPaid);
+      addMoney(this.currentPlayer().money, autoPaid);
       this._giveCardTo(this.highestBidder, this.auctionCard);
       this.auctionCard = null;
       return [{ event: "snipe_declined", winnerId: this.highestBidder }, this._advanceTurn()].flat();
@@ -274,7 +287,7 @@ class GameState {
     this.highestBid = 0;
     this.highestBidder = -1;
     for (const pl of this.players) this.passed[pl.playerId] = (pl.playerId === this.currentPlayer().playerId);
-    return { event: "payment_failed", playerId, exposedMoney: exposed, card: this.auctionCard };
+    return { event: "payment_failed", playerId, exposedMoney: exposed, card: this.auctionCard, currentPlayerId: this.currentPlayer().playerId };
   }
 
   _giveCardTo(playerId, card) {
@@ -293,13 +306,16 @@ class GameState {
   }
 
   submitDealOffer(playerId, paid) {
+    if (this.phase !== "PRIVATE_DEAL") return { error: "不在私盘阶段" };
     if (playerId === this.dealInitiator) {
       this.dealOffer = paid;
       const offerCount = Object.values(paid).reduce((s, c) => s + c, 0);
-      return { event: "deal_offer_submitted", targetId: this.dealTarget, offerCount, setId: this.dealSetId };
-    } else {
+      return { event: "deal_offer_submitted", targetId: this.dealTarget, initiatorId: this.dealInitiator, offerCount, setId: this.dealSetId };
+    } else if (playerId === this.dealTarget) {
       this.dealCounter = paid;
       return this._resolvePrivateDeal();
+    } else {
+      return { error: "你不在这个私盘中" };
     }
   }
 
@@ -313,13 +329,21 @@ class GameState {
     if (offerTotal === counterTotal) {
       this.dealTieCount++;
       if (this.dealTieCount >= 2) {
+        // 随机决定赢家，双方按各自报价交换金钱，赢家获得卡牌
+        const coinFlip = Math.random() < 0.5;
+        const winner = coinFlip ? initiator : target;
+        const loser = coinFlip ? target : initiator;
         for (let i = 0; i < tradeCount; i++) {
-          const card = getAntiquesBySet(target.antiques, this.dealSetId)[0];
-          target.antiques = target.antiques.filter(c => c !== card);
-          initiator.antiques.push(card);
+          const card = getAntiquesBySet(loser.antiques, this.dealSetId)[0];
+          loser.antiques = loser.antiques.filter(c => c !== card);
+          winner.antiques.push(card);
         }
-        this._checkCompleteSet(initiator.playerId);
-        const result = { event: "deal_resolved", tieForcedWinner: initiator.playerId, tradeCount, offerTotal, counterTotal };
+        addMoney(loser.money, this.dealOffer);
+        deductMoneyExact(initiator.money, this.dealOffer);
+        addMoney(initiator.money, this.dealCounter);
+        deductMoneyExact(loser.money, this.dealCounter);
+        this._checkCompleteSet(winner.playerId);
+        const result = { event: "deal_resolved", tieForcedWinner: winner.playerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
         return [result, this._advanceTurn()].flat();
       }
       return { event: "deal_tie", tieCount: this.dealTieCount, initiatorId: this.dealInitiator, targetId: this.dealTarget, setId: this.dealSetId };

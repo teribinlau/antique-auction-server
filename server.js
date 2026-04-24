@@ -106,11 +106,6 @@ wss.on("connection", (ws) => {
     if (action === "start_game") {
       if (room.players.length < 2) { send(ws, { event: "error", message: "至少需要2名玩家" }); return; }
       room.game = new GameState(room.players.map(p => p.playerName));
-      // 分配 playerId
-      for (let i = 0; i < room.players.length; i++) {
-        room.players[i].playerId = i;
-        room.players[i].ws._playerId = i;
-      }
       broadcast(room, { event: "game_started", playerCount: room.players.length });
       const ev = room.game.nextTurn();
       dispatchEvents(room, ev);
@@ -135,8 +130,8 @@ wss.on("connection", (ws) => {
       const auctionerId = game.currentPlayer().playerId;
       if (playerId === auctionerId) return;
       const ev = game.placeBid(playerId, msg.amount);
+      if (ev.error) return;
       dispatchEvents(room, ev);
-      // 所有非开拍玩家都已出价或放弃则结算
       const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
       const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
       if (allDone) dispatchEvents(room, game.resolveBids());
@@ -149,6 +144,7 @@ wss.on("connection", (ws) => {
       const auctionerId = game.currentPlayer().playerId;
       if (playerId === auctionerId) return;
       const ev = game.passBid(playerId);
+      if (ev.error) return;
       dispatchEvents(room, ev);
       const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
       const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
@@ -190,11 +186,26 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     const room = rooms[ws._roomCode];
     if (!room) return;
+    const disconnectedId = ws._playerId;
     room.players = room.players.filter(p => p.ws !== ws);
     if (room.players.length === 0) {
       delete rooms[ws._roomCode];
-    } else {
-      broadcast(room, { event: "player_left", playerName: ws._playerName });
+      return;
+    }
+    broadcast(room, { event: "player_left", playerName: ws._playerName });
+    // 游戏进行中：若断线玩家是当前行动玩家，跳到下一个在线玩家
+    if (room.game && room.game.phase !== "GAME_OVER") {
+      const onlineIds = new Set(room.players.map(p => p.playerId));
+      if (room.game.currentPlayer().playerId === disconnectedId) {
+        // 推进直到找到在线玩家
+        let steps = 0;
+        do {
+          room.game.currentPlayerIndex = (room.game.currentPlayerIndex + 1) % room.game.players.length;
+          steps++;
+        } while (!onlineIds.has(room.game.currentPlayer().playerId) && steps < room.game.players.length);
+        const ev = room.game.nextTurn();
+        dispatchEvents(room, ev);
+      }
     }
   });
 });
