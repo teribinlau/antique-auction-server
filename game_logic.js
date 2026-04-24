@@ -216,7 +216,7 @@ class GameState {
     }
 
     const events = [];
-    if (this.auctionCard.setId === "silver_ingots") {
+    if (this.auctionCard.setId === "silver_ingots" && this.silverIngotCount < SILVER_INGOT_BONUS.length - 1) {
       this.silverIngotCount++;
       const bonus = SILVER_INGOT_BONUS[this.silverIngotCount] || 0;
       for (const p of this.players) addMoney(p.money, splitIntoBills(bonus));
@@ -281,7 +281,8 @@ class GameState {
 
   _failPayment(playerId) {
     const p = this.getPlayer(playerId);
-    const exposed = { ...p.money };
+    const exposed = {};
+    for (const f in p.money) exposed[String(f)] = p.money[f];
     this.bids = {};
     this.passed = {};
     this.highestBid = 0;

@@ -171,6 +171,8 @@ wss.on("connection", (ws) => {
     // ── 发起私盘 ──────────────────────────────────────────
     if (action === "start_private_deal") {
       if (game.currentPlayer().playerId !== playerId) return;
+      const targetPlayer = game.getPlayer(msg.targetId);
+      if (!targetPlayer) return;
       const ev = game.startPrivateDeal(playerId, msg.targetId, msg.setId);
       dispatchEvents(room, ev);
       return;
