@@ -99,21 +99,27 @@ wss.on("connection", (ws) => {
 
     // ── 出价 ──────────────────────────────────────────────
     if (action === "place_bid") {
+      if (game.phase !== "AUCTION") return;
+      const auctionerId = game.currentPlayer().playerId;
+      if (playerId === auctionerId) return;
       const ev = game.placeBid(playerId, msg.amount);
       dispatchEvents(room, ev);
-      // 检查是否所有非开拍玩家都已提交
-      const auctionerId = game.currentPlayer().playerId;
-      const allDone = game.players.every(p => p.playerId === auctionerId || game.passed[p.playerId] !== undefined);
+      // 所有非开拍玩家都已出价或放弃则结算
+      const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
+      const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
       if (allDone) dispatchEvents(room, game.resolveBids());
       return;
     }
 
     // ── 放弃竞价 ──────────────────────────────────────────
     if (action === "pass_bid") {
+      if (game.phase !== "AUCTION") return;
+      const auctionerId = game.currentPlayer().playerId;
+      if (playerId === auctionerId) return;
       const ev = game.passBid(playerId);
       dispatchEvents(room, ev);
-      const auctionerId = game.currentPlayer().playerId;
-      const allDone = game.players.filter(p => p.playerId !== auctionerId).every(p => game.passed[p.playerId] !== undefined || game.bids[p.playerId] !== undefined);
+      const nonAuctioneers = game.players.filter(p => p.playerId !== auctionerId);
+      const allDone = nonAuctioneers.every(p => game.bids[p.playerId] !== undefined || game.passed[p.playerId] === true);
       if (allDone) dispatchEvents(room, game.resolveBids());
       return;
     }
