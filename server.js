@@ -91,6 +91,12 @@ wss.on("connection", (ws) => {
     const room = rooms[ws._roomCode];
     if (!room) return;
 
+    // ── 状态同步 ──────────────────────────────────────────
+    if (action === "request_state") {
+      if (room.game) send(ws, { event: "state_update", state: room.game.getViewFor(ws._playerId) });
+      return;
+    }
+
     // ── 开始游戏 ──────────────────────────────────────────
     if (action === "start_game") {
       if (room.players.length < 2) { send(ws, { event: "error", message: "至少需要2名玩家" }); return; }
