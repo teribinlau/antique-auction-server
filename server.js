@@ -10,7 +10,7 @@ const httpServer = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer });
-httpServer.listen(PORT, () => console.log(`服务器运行在 ws://localhost:${PORT}`));
+httpServer.listen(PORT, "0.0.0.0", () => console.log(`服务器运行在 ws://0.0.0.0:${PORT}`));
 
 // rooms: roomCode -> { players: [{ws, playerId, playerName}], game: GameState|null, bidsCollected: [] }
 const rooms = {};
