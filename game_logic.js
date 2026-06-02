@@ -303,12 +303,14 @@ class GameState {
     const p = this.getPlayer(playerId);
     const exposed = {};
     for (const f in p.money) exposed[String(f)] = p.money[f];
+    const failedCard = this.auctionCard;
+    this.auctionCard = null;
     this.bids = {};
     this.passed = {};
     this.highestBid = 0;
     this.highestBidder = -1;
-    for (const pl of this.players) this.passed[pl.playerId] = (pl.playerId === this.currentPlayer().playerId);
-    return { event: "payment_failed", playerId, exposedMoney: exposed, card: this.auctionCard, currentPlayerId: this.currentPlayer().playerId };
+    const failEvent = { event: "payment_failed", playerId, exposedMoney: exposed, card: failedCard, currentPlayerId: this.currentPlayer().playerId };
+    return [failEvent, this._advanceTurn()].flat();
   }
 
   _giveCardTo(playerId, card) {
