@@ -8,7 +8,8 @@
 |---|---|---|
 | list_rooms | — | 返回 room_list |
 | create_room | roomName?, playerName?, password? | **不会自动入座**，返回 room_created 后需再发 join_room |
-| join_room | roomCode, playerName?, password? | 返回 joined_room（含你的 playerId） |
+| join_room | roomCode, playerName?, password? | 返回 joined_room（含你的 playerId 与 reconnectToken） |
+| rejoin_room | roomCode, reconnectToken | 断线重连：用令牌把新连接绑回原座位（替代 join_room）。成功返回 rejoined_room，随后自动补发 state_update（及未结束时的 turn_changed）；令牌无效则返回 error |
 | request_state | — | 仅游戏进行中有响应 |
 | start_game | — | ≥2 人可开始 |
 | start_auction | — | 仅当前回合玩家 |
@@ -25,9 +26,12 @@
 |---|---|
 | room_list | rooms:[{roomCode,roomName,playerCount,hasPassword}] |
 | room_created | roomCode, roomName |
-| joined_room | roomCode, roomName, playerId, playerCount, players:[String] |
+| joined_room | roomCode, roomName, playerId, playerCount, players:[String], reconnectToken（断线重连令牌，客户端持久化后用于 rejoin_room） |
+| rejoined_room | roomCode, roomName, playerId, playerCount, players:[String], reconnectToken（重连成功，语义同 joined_room=恢复座位；其后服务端自动补发 state_update 与未结束时的 turn_changed） |
 | player_joined | playerName, playerCount |
 | player_left | playerName |
+| player_disconnected | playerName, playerId（某玩家游戏中掉线，座位保留以便凭令牌重连） |
+| player_reconnected | playerName, playerId（某玩家凭令牌重连回座位） |
 | error | message |
 | game_started | playerCount |
 | state_update | state（见下方 state 结构） |
@@ -120,3 +124,4 @@
 1. **money/exposedMoney 的 key 是字符串面值**，固定集合 `["0","10","50","100","200","500"]`，`"0"` 为废钞
 2. **playerId 是入座顺序下标** 0..3
 3. **「轮到谁出价」不在 state 里**，只能靠 `bid_turn` 事件维护
+4. **断线重连**：服务器每 30s 发 WebSocket 协议级 PING（客户端由系统自动回 PONG，无需额外代码）。入座 / 重连成功时下发 `reconnectToken`，客户端应持久化（按 roomCode）；游戏进行中掉线服务端**保留座位**（广播 `player_disconnected`），凭 `rejoin_room{roomCode,reconnectToken}` 可绑回原座位（广播 `player_reconnected`）。离开房间或 `game_over` 后客户端应清除已存令牌

@@ -12,8 +12,14 @@ enum GameEvent: Decodable {
     case roomList(rooms: [RoomSummary])
     case roomCreated(roomCode: String, roomName: String)
     case joinedRoom(JoinedRoom)
+    /// 重连成功，语义同 joinedRoom（恢复座位）；其后服务端会补发 state_update 与 turn_changed。
+    case rejoinedRoom(JoinedRoom)
     case playerJoined(playerName: String, playerCount: Int)
     case playerLeft(playerName: String)
+    /// 某玩家游戏中掉线（座位保留，可能凭令牌重连回来）。
+    case playerDisconnected(playerName: String, playerId: Int)
+    /// 某玩家重连回座位。
+    case playerReconnected(playerName: String, playerId: Int)
     case error(message: String)
     case gameStarted(playerCount: Int)
 
@@ -54,8 +60,11 @@ enum GameEvent: Decodable {
         case .roomList: return "room_list"
         case .roomCreated: return "room_created"
         case .joinedRoom: return "joined_room"
+        case .rejoinedRoom: return "rejoined_room"
         case .playerJoined: return "player_joined"
         case .playerLeft: return "player_left"
+        case .playerDisconnected: return "player_disconnected"
+        case .playerReconnected: return "player_reconnected"
         case .error: return "error"
         case .gameStarted: return "game_started"
         case .stateUpdate: return "state_update"
@@ -109,6 +118,11 @@ enum GameEvent: Decodable {
             let joined = try JoinedRoom(from: decoder)
             self = .joinedRoom(joined)
 
+        case "rejoined_room":
+            // rejoined_room 字段同 joined_room（同层平铺），共用 JoinedRoom 解。
+            let rejoined = try JoinedRoom(from: decoder)
+            self = .rejoinedRoom(rejoined)
+
         case "player_joined":
             let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""
             let pc = try c.decodeIfPresent(Int.self, forKey: .key("playerCount")) ?? 0
@@ -117,6 +131,16 @@ enum GameEvent: Decodable {
         case "player_left":
             let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""
             self = .playerLeft(playerName: pn)
+
+        case "player_disconnected":
+            let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""
+            let pid = try c.decodeIfPresent(Int.self, forKey: .key("playerId")) ?? -1
+            self = .playerDisconnected(playerName: pn, playerId: pid)
+
+        case "player_reconnected":
+            let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""
+            let pid = try c.decodeIfPresent(Int.self, forKey: .key("playerId")) ?? -1
+            self = .playerReconnected(playerName: pn, playerId: pid)
 
         case "error":
             let msg = try c.decodeIfPresent(String.self, forKey: .key("message")) ?? "未知错误"

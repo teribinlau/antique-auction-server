@@ -63,15 +63,21 @@ struct AppRootView: View {
         }
     }
 
-    // ── 重连：scenePhase 回到 active 时 ──────────────────────
+    // ── 重连：scenePhase 回到 active 且连接已断时 ──────────────
     private func handleScenePhase(_ phase: ScenePhase) {
         guard phase == .active else { return }
-        // 未连接则尝试连接（昵称非空时）。
-        if client.connection == .disconnected && !client.currentPlayerName.isEmpty {
-            client.connect()
-        }
-        // 已在房间里则请求一次状态。等待室阶段服务端不回，属正常（容忍无响应）。
-        if client.roomCode != nil {
+        // 仅在「连接已断」时才做重连恢复（连接仍健康则无需打扰，避免重复 rejoin / 横幅）。
+        guard client.connection == .disconnected else { return }
+        // 重建连接（昵称非空时）。connect() 同步置为 .connected 并开始收发。
+        guard !client.currentPlayerName.isEmpty else { return }
+        client.connect()
+        // 恢复房间态：
+        //  - 若存有 roomCode + reconnectToken（内存或持久化）→ 发 rejoin_room 绑回原座位；
+        //    服务端随后会补发 rejoined_room + state_update(+turn_changed)。
+        //  - 否则维持原 request_state 兜底（仅游戏中有响应，等待室无响应属正常）。
+        if client.canRejoin {
+            client.rejoin()
+        } else if client.roomCode != nil {
             client.requestState()
         }
     }

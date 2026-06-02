@@ -9,6 +9,8 @@ enum ClientAction: Encodable {
     case listRooms
     case createRoom(roomName: String?, playerName: String?, password: String?)
     case joinRoom(roomCode: String, playerName: String?, password: String?)
+    /// 断线重连：用令牌把新连接绑回原座位（替代 join_room）。
+    case rejoinRoom(roomCode: String, reconnectToken: String)
     case requestState
     case startGame
     case startAuction
@@ -25,6 +27,7 @@ enum ClientAction: Encodable {
         case .listRooms: return "list_rooms"
         case .createRoom: return "create_room"
         case .joinRoom: return "join_room"
+        case .rejoinRoom: return "rejoin_room"
         case .requestState: return "request_state"
         case .startGame: return "start_game"
         case .startAuction: return "start_auction"
@@ -63,6 +66,10 @@ enum ClientAction: Encodable {
             try c.encode(roomCode, forKey: DynamicKey(stringValue: "roomCode"))
             try c.encodeIfPresent(playerName, forKey: DynamicKey(stringValue: "playerName"))
             try c.encodeIfPresent(password, forKey: DynamicKey(stringValue: "password"))
+
+        case let .rejoinRoom(roomCode, reconnectToken):
+            try c.encode(roomCode, forKey: DynamicKey(stringValue: "roomCode"))
+            try c.encode(reconnectToken, forKey: DynamicKey(stringValue: "reconnectToken"))
 
         case let .placeBid(amount):
             try c.encode(amount, forKey: DynamicKey(stringValue: "amount"))

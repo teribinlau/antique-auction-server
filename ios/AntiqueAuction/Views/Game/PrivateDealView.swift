@@ -44,7 +44,8 @@ struct PrivateDealView: View {
 
     /// 用 lastEvent 是否为 deal_tie 作为「需重标」信号源。
     private var dealTieSignal: Int {
-        if case let .dealTie(tieCount, _, _, _) = client.lastEvent { return tieCount }
+        // lastEvent 为可选，需用 `?` 解可选再匹配 case（否则会报「必须先解包」编译错误）。
+        if case let .dealTie(tieCount, _, _, _)? = client.lastEvent { return tieCount }
         return 0
     }
 

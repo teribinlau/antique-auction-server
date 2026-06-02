@@ -46,6 +46,20 @@ final class GameClient: ObservableObject {
     /// 本地保存的昵称（连接 / 建房 / 加入时复用）。
     private var playerName: String
 
+    /// 断线重连令牌（内存副本）。joined_room / rejoined_room 时捕获；离开房间 / game_over 时清除。
+    /// 同时按 roomCode 持久化到 UserDefaults，使 App 重启后仍可尝试原座位重连。
+    private var reconnectToken: String?
+    /// UserDefaults 中重连令牌的 key 前缀（按 roomCode 区分）。
+    private static let tokenKeyPrefix = "reconnectToken."
+    /// UserDefaults 中「最近一次房间码」的 key（App 重启后据此找回令牌发起 rejoin）。
+    private static let lastRoomCodeKey = "reconnectLastRoomCode"
+    /// 是否正处于一次重连尝试中（已发 rejoin_room，等待 rejoined_room / error）。
+    /// 用于在收到 error 时判定「令牌失效」并回退大厅。
+    private var isRejoining = false
+    /// 可选的客户端保活定时器（周期 sendPing；失败即标记断开触发重连）。
+    private var pingTimer: Timer?
+    private static let pingIntervalSec: TimeInterval = 20
+
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         return e
@@ -80,6 +94,7 @@ final class GameClient: ObservableObject {
         // 发送一次 ping 以尽快确认链路；成功则置 connected。
         connection = .connected
         receive()
+        startPingTimer()
         // 进大厅后立即拉一次房间列表（若本就在大厅）。
         if roomCode == nil {
             send(.listRooms)
@@ -87,6 +102,7 @@ final class GameClient: ObservableObject {
     }
 
     func disconnect() {
+        stopPingTimer()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         connection = .disconnected
@@ -94,6 +110,9 @@ final class GameClient: ObservableObject {
 
     /// 主动断开并清空一切房间 / 游戏状态，回到「未入房」初始态（用于返回大厅）。
     func leaveToLobby() {
+        // 主动离开房间：清除已存的重连令牌与房间码，避免下次误用旧座位。
+        clearReconnectToken()
+        isRejoining = false
         roomCode = nil
         roomName = nil
         myPlayerId = nil
@@ -172,6 +191,7 @@ final class GameClient: ObservableObject {
         #if DEBUG
         print("[GameClient] socket error: \(error)")
         #endif
+        stopPingTimer()
         connection = .disconnected
         task = nil
     }
@@ -197,6 +217,28 @@ final class GameClient: ObservableObject {
             self.lobbyPlayers = joined.players
             self.phase = .waiting
             self.gameStarted = false
+            // 捕获并持久化重连令牌（内存 + 按 roomCode 存 UserDefaults）。
+            storeReconnectToken(joined.reconnectToken, for: joined.roomCode)
+
+        case let .rejoinedRoom(joined):
+            // 重连成功：恢复座位，语义同 joined_room。其后服务端会补发 state_update（+turn_changed），
+            // 真正的牌局渲染依赖随后的 state_update，这里只恢复身份与房间信息。
+            isRejoining = false
+            self.roomCode = joined.roomCode
+            self.roomName = joined.roomName
+            self.myPlayerId = joined.playerId
+            self.lobbyPlayers = joined.players
+            // 刷新令牌（服务端可能续发同一令牌，统一以最新为准）。
+            storeReconnectToken(joined.reconnectToken, for: joined.roomCode)
+            banner = "已重连，正在恢复牌局…"
+
+        case let .playerDisconnected(name, _):
+            // 某玩家游戏中掉线（座位保留，可能凭令牌重连回来）。仅提示。
+            banner = "\(name) 掉线了"
+
+        case let .playerReconnected(name, _):
+            // 某玩家重连回座位。仅提示。
+            banner = "\(name) 已重连"
 
         case let .playerJoined(name, playerCount):
             // 已在房间内的玩家会收到此事件（新人入座）。把名字补进名单。
@@ -212,6 +254,12 @@ final class GameClient: ObservableObject {
 
         case let .error(message):
             banner = message
+            // 若正处于重连尝试中收到 error（如「令牌无效」「房间不存在或已结束」），
+            // 说明原座位已不可恢复：回退到大厅（leaveToLobby 内部会清除令牌），避免反复用废令牌重连。
+            if isRejoining {
+                isRejoining = false
+                leaveToLobby()
+            }
 
         case .gameStarted:
             self.gameStarted = true
@@ -261,6 +309,8 @@ final class GameClient: ObservableObject {
             self.phase = .gameOver
             self.finalScores = scores
             self.currentBidderId = nil
+            // 牌局结束：清除重连令牌与房间码，避免下次启动误用已结束的座位。
+            clearReconnectToken()
 
         // 以下事件仅通过 lastEvent 驱动一次性 UI（提示/动画），无需改持久状态。
         case .auctionStarted, .privateDealStarted, .dealOfferSubmitted,
@@ -317,6 +367,89 @@ final class GameClient: ObservableObject {
     /// 仅游戏中有响应；等待室阶段服务端不回，调用方需容忍「无响应」（不报错）。
     func requestState() {
         send(.requestState)
+    }
+
+    // ── 断线重连 ─────────────────────────────────────────────
+
+    /// 是否具备凭令牌重连的条件（存有 roomCode 与对应令牌）。
+    /// AppRootView 的 scenePhase 重连分支据此决定发 rejoin_room 还是 request_state。
+    var canRejoin: Bool {
+        guard let code = roomCode ?? persistedLastRoomCode else { return false }
+        return (reconnectToken ?? persistedToken(for: code)) != nil
+    }
+
+    /// 用已存令牌把当前连接绑回原座位（替代 request_state）。
+    /// 优先用内存令牌；内存没有则回退 UserDefaults（App 重启后的场景）。
+    /// 调用前应确保已连接（connect() 完成）。
+    func rejoin() {
+        // 房间码优先内存，其次持久化的「最近房间码」。
+        guard let code = roomCode ?? persistedLastRoomCode else { return }
+        guard let token = reconnectToken ?? persistedToken(for: code) else { return }
+        // 同步回内存，确保后续 reduce / 判断一致。
+        self.roomCode = code
+        self.reconnectToken = token
+        isRejoining = true
+        send(.rejoinRoom(roomCode: code, reconnectToken: token))
+    }
+
+    /// 捕获并持久化重连令牌（内存 + UserDefaults，按 roomCode 区分），并记下最近房间码。
+    private func storeReconnectToken(_ token: String, for code: String) {
+        reconnectToken = token
+        let d = UserDefaults.standard
+        d.set(token, forKey: Self.tokenKeyPrefix + code)
+        d.set(code, forKey: Self.lastRoomCodeKey)
+    }
+
+    /// 清除内存与持久化的重连令牌（及最近房间码）。离开房间 / game_over / 令牌失效时调用。
+    private func clearReconnectToken() {
+        let d = UserDefaults.standard
+        if let code = roomCode ?? persistedLastRoomCode {
+            d.removeObject(forKey: Self.tokenKeyPrefix + code)
+        }
+        d.removeObject(forKey: Self.lastRoomCodeKey)
+        reconnectToken = nil
+    }
+
+    /// 读取某 roomCode 对应的持久化令牌（无则 nil）。
+    private func persistedToken(for code: String) -> String? {
+        UserDefaults.standard.string(forKey: Self.tokenKeyPrefix + code)
+    }
+
+    /// 读取持久化的「最近房间码」（无则 nil）。
+    private var persistedLastRoomCode: String? {
+        UserDefaults.standard.string(forKey: Self.lastRoomCodeKey)
+    }
+
+    // ── 可选保活心跳 ─────────────────────────────────────────
+    // 服务器每 30s 发协议级 PING，系统会自动回 PONG，无需必做的客户端代码。
+    // 这里加一个轻量周期 sendPing 作额外保活：失败即标记断开，交由 scenePhase 触发重连。
+
+    /// 启动客户端保活定时器（幂等）。connect() 成功后调用。
+    private func startPingTimer() {
+        stopPingTimer()
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.pingIntervalSec, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.sendKeepAlivePing()
+            }
+        }
+        pingTimer = timer
+    }
+
+    /// 停止保活定时器。
+    private func stopPingTimer() {
+        pingTimer?.invalidate()
+        pingTimer = nil
+    }
+
+    /// 发一次 WebSocket PING；失败则视为链路已断，标记断开（由 scenePhase 重连兜底）。
+    private func sendKeepAlivePing() {
+        guard let task else { return }
+        task.sendPing { [weak self] error in
+            guard error != nil else { return }
+            Task { @MainActor in
+                self?.handleSocketError(NSError(domain: "GameClient", code: -1))
+            }
+        }
     }
 
     /// 清空横幅（用户手动消除提示时调用）。

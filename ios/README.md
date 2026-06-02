@@ -149,9 +149,12 @@ SwiftUI 视图 ──调用便利方法──▶ GameClient.send(ClientAction)
 
 ## 六、已知限制与可能需要微调的点（请在 Xcode 端留意）
 
-- **断线会丢座位（重要）**：服务端 `ws.close` 会把玩家从 `room.players` 移除，且**没有重连令牌机制**。因此：
-  - 大厅 / 等待室断线重连基本无碍（重新 `list_rooms` / 重新 `join_room`）。
-  - **游戏进行中断线会丢失座位**，无法原座位续玩。当前兜底策略是「掉线即回大厅重开」（`leaveToLobby()` 会断开并重连、清空房间态）。若需要真正的断线续玩，得在服务端加 `playerToken` 持久化座位——这是后端改动，本客户端未实现。
+- **已支持自动重连（保留座位）**：服务端在你入座 / 重连成功时下发 `reconnectToken`，并在游戏进行中掉线时**保留座位**（广播 `player_disconnected`），凭令牌可绑回原座位（广播 `player_reconnected`）。客户端机制：
+  - **捕获并持久化令牌**：`joined_room` / `rejoined_room` 携带 `reconnectToken`，`GameClient` 把它存入内存并按 `roomCode` 写 `UserDefaults`（连同「最近房间码」），App 重启后仍可尝试原座位重连。
+  - **重连时机**：`AppRootView` 监听 `scenePhase == .active` 且连接已断时，先 `connect()` 重建连接，再判断——若存有 `roomCode + reconnectToken` 则发 `rejoin_room` 绑回原座位（否则维持 `request_state` 兜底）。
+  - **恢复渲染**：收到 `rejoined_room` 恢复 `myPlayerId` / `roomCode` 等身份信息，依赖服务端随后自动补发的 `state_update`（及未结束时的 `turn_changed`）重绘牌局；其他玩家掉线 / 重连通过横幅提示。
+  - **失效与清理**：令牌无效（服务端回 `error`）时清除令牌并回退大厅；离开房间或 `game_over` 后清除已存的 `reconnectToken` 与房间码，避免下次误用。
+  - **可选保活**：除服务器 30s 的协议级 PING（系统自动回 PONG）外，`GameClient` 另起一个轻量周期 `sendPing` 保活，失败即标记断开、交由上面的 `scenePhase` 重连兜底。
 - **`URLSessionWebSocketTask` 无显式「已连接」回调**：`connect()` 在 `resume()` 后即把 `connection` 置为 `.connected` 并开始收发。若服务器地址错误 / 不可达，要等首次 `send`/`receive` 失败才会回落到 `.disconnected`（届时回到首屏）。如需更严谨，可在 `connect()` 后发一次 `URLSessionWebSocketTask.sendPing` 并据回调再切 `.connected`。
 - **等待室名单维护**：玩家名单以 `joined_room`（自己入座时的全量名单）为基准，之后靠 `player_joined`（追加）/ `player_left`（移除）增量维护。服务端 `player_joined` 不带完整名单，故用 `playerCount` 做去重兜底；极端乱序下名单可能与服务端略有偏差，但一旦开局，`state_update` 会给出权威玩家信息。
 - **出价金额无上限校验**：`AuctionView` 的出价 Stepper 不校验「是否真付得起」——竞拍出价本就可以虚高（诈唬），真正的支付校验发生在 `SNIPE` 阶段（截拍付款 / 出价者自动付款），付不起由服务端发 `payment_failed`（横幅会展示曝光的钞票）。这是规则使然，非 bug。
