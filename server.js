@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const { GameState } = require("./game_logic");
 
@@ -12,15 +13,20 @@ const httpServer = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server: httpServer });
 httpServer.listen(PORT, "0.0.0.0", () => console.log(`服务器运行在 ws://0.0.0.0:${PORT}`));
 
-// rooms: roomCode -> { players: [{ws, playerId, playerName}], game: GameState|null, bidsCollected: [] }
+// rooms: roomCode -> { players: [{ws, playerId, playerName, reconnectToken, connected}], game: GameState|null, bidsCollected: [] }
 const rooms = {};
 
 function genCode() {
   return Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
+// 重连令牌：玩家入座时分配，断线后凭此把新连接绑回原座位
+function genToken() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
 function send(ws, msg) {
-  if (ws.readyState === 1) ws.send(JSON.stringify(msg));
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
 function broadcast(room, msg) {
@@ -43,7 +49,21 @@ function dispatchEvents(room, events) {
   broadcastState(room);
 }
 
+// ── 心跳：定期 ping，剔除无响应的死连接（触发其 close → 保座或回收房间） ──
+const HEARTBEAT_MS = 30000;
+const heartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }
+}, HEARTBEAT_MS);
+wss.on("close", () => clearInterval(heartbeat));
+
 wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
+
   ws.on("message", (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -90,9 +110,35 @@ wss.on("connection", (ws) => {
       ws._playerName = msg.playerName || `玩家${room.players.length + 1}`;
       const playerId = room.players.length;
       ws._playerId = playerId;
-      room.players.push({ ws, playerId, playerName: ws._playerName });
-      send(ws, { event: "joined_room", roomCode: msg.roomCode, roomName: room.roomName, playerId, playerCount: room.players.length, players: room.players.map(p => p.playerName) });
+      const reconnectToken = genToken();
+      room.players.push({ ws, playerId, playerName: ws._playerName, reconnectToken, connected: true });
+      send(ws, { event: "joined_room", roomCode: msg.roomCode, roomName: room.roomName, playerId, playerCount: room.players.length, players: room.players.map(p => p.playerName), reconnectToken });
       broadcast(room, { event: "player_joined", playerName: ws._playerName, playerCount: room.players.length });
+      return;
+    }
+
+    // ── 重连入座 ──────────────────────────────────────────
+    if (action === "rejoin_room") {
+      const room = rooms[msg.roomCode];
+      if (!room) { send(ws, { event: "error", message: "房间不存在或已结束" }); return; }
+      const player = room.players.find(p => p.reconnectToken && p.reconnectToken === msg.reconnectToken);
+      if (!player) { send(ws, { event: "error", message: "重连失败：令牌无效" }); return; }
+      // 把新连接绑回原座位
+      player.ws = ws;
+      player.connected = true;
+      ws._roomCode = msg.roomCode;
+      ws._playerId = player.playerId;
+      ws._playerName = player.playerName;
+      ws.isAlive = true;
+      send(ws, { event: "rejoined_room", roomCode: msg.roomCode, roomName: room.roomName, playerId: player.playerId, playerCount: room.players.length, players: room.players.map(p => p.playerName), reconnectToken: player.reconnectToken });
+      broadcast(room, { event: "player_reconnected", playerName: player.playerName, playerId: player.playerId });
+      // 重发当前游戏状态，让客户端恢复
+      if (room.game) {
+        send(ws, { event: "state_update", state: room.game.getViewFor(player.playerId) });
+        if (room.game.phase !== "GAME_OVER") {
+          send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
+        }
+      }
       return;
     }
 
@@ -188,26 +234,37 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     const room = rooms[ws._roomCode];
     if (!room) return;
-    const disconnectedId = ws._playerId;
-    room.players = room.players.filter(p => p.ws !== ws);
-    if (room.players.length === 0) {
-      delete rooms[ws._roomCode];
+
+    // 大厅阶段（未开局）：直接释放座位
+    if (!room.game) {
+      room.players = room.players.filter(p => p.ws !== ws);
+      if (room.players.length === 0) { delete rooms[ws._roomCode]; return; }
+      broadcast(room, { event: "player_left", playerName: ws._playerName });
       return;
     }
-    broadcast(room, { event: "player_left", playerName: ws._playerName });
-    // 游戏进行中：若断线玩家是当前行动玩家，跳到下一个在线玩家
-    if (room.game && room.game.phase !== "GAME_OVER") {
-      const onlineIds = new Set(room.players.map(p => p.playerId));
-      if (room.game.currentPlayer().playerId === disconnectedId) {
-        // 推进直到找到在线玩家
-        let steps = 0;
-        do {
-          room.game.currentPlayerIndex = (room.game.currentPlayerIndex + 1) % room.game.players.length;
-          steps++;
-        } while (!onlineIds.has(room.game.currentPlayer().playerId) && steps < room.game.players.length);
-        const ev = room.game.nextTurn();
-        dispatchEvents(room, ev);
-      }
+
+    // 游戏进行中：保留座位以便凭令牌重连，仅标记掉线。
+    // 仅当这条连接仍是该座位的当前连接时才处理（避免旧连接迟到的 close 干扰已重连的玩家）。
+    const player = room.players.find(p => p.ws === ws);
+    if (!player) return;
+    player.connected = false;
+    player.ws = null;
+    broadcast(room, { event: "player_disconnected", playerName: player.playerName, playerId: player.playerId });
+
+    // 所有人都掉线 → 无人可重连，回收房间
+    const connected = room.players.filter(p => p.connected);
+    if (connected.length === 0) { delete rooms[ws._roomCode]; return; }
+
+    // 掉线者正是当前行动玩家 → 推进到下一个在线玩家，避免卡住
+    if (room.game.phase !== "GAME_OVER" && room.game.currentPlayer().playerId === player.playerId) {
+      const onlineIds = new Set(connected.map(p => p.playerId));
+      let steps = 0;
+      do {
+        room.game.currentPlayerIndex = (room.game.currentPlayerIndex + 1) % room.game.players.length;
+        steps++;
+      } while (!onlineIds.has(room.game.currentPlayer().playerId) && steps < room.game.players.length);
+      const ev = room.game.nextTurn();
+      dispatchEvents(room, ev);
     }
   });
 });
