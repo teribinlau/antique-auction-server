@@ -271,6 +271,13 @@ final class GameClient: ObservableObject {
             if isRejoining {
                 isRejoining = false
                 leaveToLobby()
+            } else if myPlayerId == nil, roomCode != nil {
+                // 入房/建房尚未落座时收到 error（如输错房间码、房间已不存在）：
+                // 清掉乐观设置的房间码，退回大厅（保持连接），避免卡在「正在加入房间…」。
+                roomCode = nil
+                roomName = nil
+                lobbyPlayers = []
+                listRooms()
             }
 
         case .gameStarted:
