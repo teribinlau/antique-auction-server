@@ -5,9 +5,15 @@ const { GameState } = require("./game_logic");
 
 const PORT = process.env.PORT || 3000;
 
+// 在线版本戳：浏览器访问服务地址（https://你的应用.onrender.com/）即可看到当前部署的 commit，
+// 用于确认服务器跑的是不是最新代码。Render 会注入 RENDER_GIT_COMMIT。
+const STARTED_AT = new Date().toISOString();
+const GIT_COMMIT = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "unknown";
+
 const httpServer = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end("ok");
+  // 同时充当 Render 健康检查（返回 200）与版本戳。
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify({ status: "ok", commit: GIT_COMMIT, startedAt: STARTED_AT }));
 });
 
 const wss = new WebSocketServer({ server: httpServer });
