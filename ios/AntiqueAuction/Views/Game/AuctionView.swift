@@ -132,6 +132,7 @@ struct AuctionView: View {
     @ViewBuilder
     private func revealCard(_ card: Card) -> some View {
         CardView(card: card)
+            .frame(maxWidth: 240)
             .transition(
                 .asymmetric(
                     insertion: .scale(scale: 0.85).combined(with: .opacity),

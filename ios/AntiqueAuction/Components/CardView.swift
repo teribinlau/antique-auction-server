@@ -1,99 +1,177 @@
 import SwiftUI
+import UIKit
 
-/// 展示一张古董卡（程序化牌面美术）。
+/// 展示一张古董卡。
 ///
-/// 牌面由 `SetTheme` 驱动：套牌渐变背景 + SF Symbol 图标 + 名称/套系/分值徽章 +
-/// 圆角/阴影/描边，并按稀有度档位增强（珍品+起金色描边与柔和高光；传世额外加克制流光）。
+/// 牌面采用 **5:7 竖版**：满幅插画背景（`Image(card.cardId)`，来自 `CardArt.xcassets`）+ 顶/底渐变蒙版 +
+/// 程序叠加的「套系 / 稀有度 / 分值 / 卡名 / 集齐」徽章；按稀有度增强（珍品+金边，传世加克制流光）。
 ///
-/// 对外接口保持稳定：原有 `CardView(card:)` 与 `CardView(card:, compact:)` 调用方无需改动；
-/// 新增可选 `inCompleteSet`（默认 false），用于给「已集齐套系」的卡加一枚醒目徽章。
+/// **美术未就位时自动回退**到程序化渐变 + 套系 SF 图标，所以可以边画边加、不会出现空白卡。
+/// 画布规格见 `ios/README.md`「视觉与手感」：1500×2100（5:7）满幅出血，文件名 = `cardId`。
+///
+/// 接口保持稳定：`CardView(card:)` / `CardView(card:, compact:)` / `CardView(card:, compact:, inCompleteSet:)`。
+///  - `compact: false`（默认）：完整竖版卡（开拍 / 截拍的主牌）。
+///  - `compact: true`：列表行式缩略（小竖版缩略图 + 文字），用于「我的古董」列表，省高度。
 struct CardView: View {
     let card: Card
-    /// 是否紧凑模式（用于列表里成排显示）。
+    /// 是否紧凑模式（列表行）。
     var compact: Bool = false
-    /// 该卡是否属于已集齐的套系（completeSets 命中）。命中则加「集齐」徽章与额外高光。
+    /// 是否属于已集齐套系（completeSets 命中）：加金色「集齐」徽章。
     var inCompleteSet: Bool = false
 
-    /// 当前卡的视觉定义（颜色/图标/稀有度）。
     private var style: SetTheme.Style { SetTheme.style(for: card) }
-    /// 圆角半径（紧凑略小）。
-    private var corner: CGFloat { compact ? 14 : 18 }
+    private var corner: CGFloat { compact ? 8 : 18 }
 
     var body: some View {
-        content
-            .padding(compact ? 12 : 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground)
-            .overlay(cardBorder)
-            .overlay(shimmerOverlay)          // 传世流光（克制；其余档位为空）
-            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .shadow(color: .black.opacity(compact ? 0.18 : 0.28),
-                    radius: compact ? 4 : 8, x: 0, y: compact ? 2 : 4)
+        if compact { compactRow } else { fullCard }
     }
 
-    // ── 卡面内容 ─────────────────────────────────────────────
-    @ViewBuilder
-    private var content: some View {
-        VStack(alignment: .leading, spacing: compact ? 6 : 10) {
-            // 顶部：套系徽章 + 稀有度档位 + 分值。
-            HStack(spacing: 8) {
-                Text(card.setName)
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+    // ── 完整竖版卡（5:7）─────────────────────────────────────
+    private var fullCard: some View {
+        Color.clear
+            .aspectRatio(5.0 / 7.0, contentMode: .fit)
+            .overlay { artwork }            // 满幅插画 / 程序化兜底
+            .overlay { scrim }              // 顶/底压暗，保证叠字可读
+            .overlay { chrome }             // 套系 / 分值 / 卡名 等叠加
+            .overlay { shimmerOverlay }     // 传世流光（其余档为空）
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: style.rarity.isElevated ? 1.5 : 1)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 8, x: 0, y: 4)
+    }
 
-                rarityBadge
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            topRow
+            Spacer(minLength: 0)
+            bottomPlate
+        }
+        .padding(14)
+    }
 
-                Spacer(minLength: 0)
+    private var topRow: some View {
+        HStack(spacing: 6) {
+            Text(card.setName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
 
-                Text("\(card.setScore) 分")
-                    .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(.white)
-            }
+            rarityBadge
 
-            // 主体：图标 + 卡名（+ 风味文字）。
-            HStack(alignment: .top, spacing: compact ? 10 : 14) {
-                iconBadge
+            Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: compact ? 2 : 6) {
-                    Text(card.cardName)
-                        .font(compact ? .subheadline.weight(.bold) : .title3.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
+            Text("\(card.setScore) 分")
+                .font(.callout.weight(.bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+        }
+    }
 
-                    if !compact {
-                        Text(card.flavorText)
-                            .font(.footnote)
-                            .foregroundStyle(Color.white.opacity(0.78))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+    private var bottomPlate: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if inCompleteSet { completeSetBadge }
+            Text(card.cardName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .shadow(color: .black.opacity(0.6), radius: 2, x: 0, y: 1)
+            Text(card.flavorText)
+                .font(.footnote)
+                .foregroundStyle(Color.white.opacity(0.85))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // ── 列表行式缩略（compact）────────────────────────────────
+    private var compactRow: some View {
+        HStack(spacing: 12) {
+            Color.clear
+                .frame(width: 46, height: 64)
+                .overlay { artwork }
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(borderColor, lineWidth: 1)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(card.setName).font(.caption.weight(.semibold))
+                    rarityBadge
                 }
-                Spacer(minLength: 0)
+                Text(card.cardName)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                if inCompleteSet { completeSetBadge }
             }
 
-            // 已集齐套系徽章（醒目）。
-            if inCompleteSet {
-                completeSetBadge
+            Spacer(minLength: 0)
+
+            Text("\(card.setScore) 分")
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(style.rarity.isElevated ? Color.antiqueGold.opacity(0.5) : .clear, lineWidth: 1)
+        )
+    }
+
+    // ── 美术层：有图用图，无图回退程序化渐变 + 套系图标 ────────
+    @ViewBuilder
+    private var artwork: some View {
+        if let ui = UIImage(named: card.cardId) {
+            Image(uiImage: ui)
+                .resizable()
+                .scaledToFill()
+        } else {
+            ZStack {
+                LinearGradient(colors: [style.primary, style.secondary],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                if style.rarity.isElevated {
+                    RadialGradient(colors: [.white.opacity(0.18), .clear],
+                                   center: .topLeading, startRadius: 0,
+                                   endRadius: compact ? 60 : 220)
+                }
+                Image(systemName: style.symbol)
+                    .font(.system(size: compact ? 22 : 60, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.30))
             }
         }
     }
 
-    // ── 图标 ─────────────────────────────────────────────────
-    private var iconBadge: some View {
-        Image(systemName: style.symbol)
-            .font(.system(size: compact ? 22 : 30, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: compact ? 40 : 54, height: compact ? 40 : 54)
-            .background(
-                Circle()
-                    .fill(Color.white.opacity(0.14))
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
-            )
+    // ── 顶/底压暗蒙版：保证叠加文字在任意插画上都清晰 ─────────
+    private var scrim: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .black.opacity(0.55), location: 0.0),
+                .init(color: .clear,               location: 0.24),
+                .init(color: .clear,               location: 0.66),
+                .init(color: .black.opacity(0.72), location: 1.0),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+        .allowsHitTesting(false)
     }
 
-    // ── 稀有度角标 ───────────────────────────────────────────
+    // ── 描边 / 角标 ──────────────────────────────────────────
+    private var borderColor: Color {
+        style.rarity.isElevated ? Color.antiqueGold.opacity(0.85) : Color.white.opacity(0.18)
+    }
+
     private var rarityBadge: some View {
         Text(style.rarity.label)
             .font(.caption2.weight(.heavy))
@@ -102,14 +180,12 @@ struct CardView: View {
             .padding(.vertical, 2)
             .background(style.rarity.accent.opacity(0.9), in: Capsule())
             .overlay(
-                // 高档（珍品/传世）加一圈金边强调。
                 Capsule().strokeBorder(
                     style.rarity.isElevated ? Color.antiqueGold.opacity(0.9) : .clear,
                     lineWidth: 1)
             )
     }
 
-    // ── 已集齐徽章 ───────────────────────────────────────────
     private var completeSetBadge: some View {
         Label("集齐套系", systemImage: "checkmark.seal.fill")
             .font(.caption2.weight(.bold))
@@ -120,55 +196,20 @@ struct CardView: View {
             .shadow(color: Color.antiqueGold.opacity(0.6), radius: 4)
     }
 
-    // ── 背景：套牌渐变 + 高档高光 ─────────────────────────────
-    private var cardBackground: some View {
-        ZStack {
-            LinearGradient(
-                colors: [style.primary, style.secondary],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            // 高档卡（珍品+）叠一层柔和高光，增加「质感」。
-            if style.rarity.isElevated {
-                RadialGradient(
-                    colors: [.white.opacity(0.18), .clear],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: compact ? 90 : 160
-                )
-            }
-        }
-    }
-
-    // ── 描边：高档金边，其余浅白边 ───────────────────────────
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: corner, style: .continuous)
-            .strokeBorder(
-                style.rarity.isElevated
-                    ? Color.antiqueGold.opacity(0.85)
-                    : .white.opacity(0.16),
-                lineWidth: style.rarity.isElevated ? 1.5 : 1
-            )
-    }
-
-    // ── 流光：仅传世，克制（缓慢扫过的斜向高光带）─────────────
     @ViewBuilder
     private var shimmerOverlay: some View {
-        if style.rarity.hasShimmer && !compact {
-            ShimmerBand(corner: corner)
-                .allowsHitTesting(false)
+        if style.rarity.hasShimmer {
+            ShimmerBand(corner: corner).allowsHitTesting(false)
         }
     }
 }
 
-/// 缓慢扫过的斜向高光带——用 `TimelineView` 驱动相位，纯 SwiftUI、iOS 16 可用。
-/// 仅最高档（传世）启用，整体很淡、节奏慢，避免晃眼。
+/// 缓慢扫过的斜向高光带——`TimelineView` 驱动相位，纯 SwiftUI、iOS 16 可用。仅传世启用，很淡、节奏慢。
 private struct ShimmerBand: View {
     let corner: CGFloat
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            // 4 秒一个循环：相位 0→1。
             let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = (t.truncatingRemainder(dividingBy: 4.0)) / 4.0
             GeometryReader { geo in
@@ -179,7 +220,6 @@ private struct ShimmerBand: View {
                     endPoint: .bottomTrailing
                 )
                 .frame(width: w * 0.5)
-                // 从左外侧扫到右外侧。
                 .offset(x: -w * 0.75 + phase * (w * 1.5))
                 .rotationEffect(.degrees(18))
                 .blendMode(.screen)
@@ -193,12 +233,19 @@ private struct ShimmerBand: View {
 struct CardView_Previews: PreviewProvider {
     static var previews: some View {
         ScrollView {
-            VStack(spacing: 12) {
-                CardView(card: .preview)                              // 传世（带流光）
-                CardView(card: .preview, inCompleteSet: true)
-                CardView(card: .previewPorcelain)                    // 珍品（金边高光）
-                CardView(card: .previewStamps)                       // 普通
-                CardView(card: .preview, compact: true)
+            VStack(spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    CardView(card: .preview)                 // 传世（带流光，无图→兜底）
+                    CardView(card: .previewStamps)           // 普通
+                }
+                .frame(height: 360)
+
+                CardView(card: .previewPorcelain, inCompleteSet: true) // 珍品 + 集齐
+                    .frame(maxWidth: 240)
+
+                // 列表行（compact）
+                CardView(card: .preview, compact: true, inCompleteSet: true)
+                CardView(card: .previewStamps, compact: true)
             }
             .padding()
         }

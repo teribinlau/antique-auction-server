@@ -189,20 +189,28 @@ SwiftUI 视图 ──调用便利方法──▶ GameClient.send(ClientAction)
 - **`SetTheme`**：把每个 `setId` **集中**映射到「主题色（深/浅两色渐变）+ SF Symbol 图标 + 稀有度档位」。
   10 套牌按 `setScore` 自动分四档：**传世**（≥800）/ **珍品**（≥350）/ **精品**（≥160）/ **普通**（其余）。
   未知 `setId` 会安全退回中性默认样式（石青 + `questionmark.circle`），不会崩。
-- **`CardView`**：用 `SetTheme` 渲染「套牌渐变背景 + 圆形图标徽章 + 套系/稀有度/分值角标 + 圆角/阴影/描边」。
-  - 珍品及以上：金色描边 + 柔和高光。
-  - 仅传世（最高档）：附加**克制流光**（`TimelineView` 驱动的缓慢斜向高光带，节奏慢、很淡，不晃眼）。
-  - 新增可选参数 `inCompleteSet`：命中已集齐套系时显示金色「集齐套系」徽章。**原有 `CardView(card:)` / `CardView(card:, compact:)` 调用方无需改动。**
+- **`CardView`**：**5:7 竖版**牌面——满幅插画背景（`Image(card.cardId)`，来自 `CardArt.xcassets`）+ 顶/底渐变蒙版 + 叠加「套系/稀有度/分值/卡名/集齐」徽章。
+  - **缺图自动回退**到程序化渐变 + 套系 SF 图标，可边画边加、不出现空白卡。
+  - 珍品及以上金色描边；仅传世（最高档）附加**克制流光**（`TimelineView` 驱动，很淡）。
+  - `compact: true` 为**列表行式缩略**（小竖版缩略图 + 文字），用于「我的古董」列表，省高度。
+  - 接口不变：`CardView(card:)` / `CardView(card:, compact:)` / `CardView(card:, compact:, inCompleteSet:)`。
 - **统一氛围**：`AntiqueBackground`（雅致暗色「宣纸/檀木」渐变 + 顶部暖金弱光）铺在全局底层；
   App 统一 `.preferredColorScheme(.dark)` 与 `.tint(Color.antiqueGold)`（古董金），各屏用 `.ultraThinMaterial` 卡片 + 透明滚动背景（`.scrollContentBackground(.hidden)`）透出底纹，风格一致。
 
-#### 想换成真实美术？
+#### 卡牌美术（`CardArt.xcassets`）
 
-只改 `SetTheme` 一处即可：
+每张卡一张插画，由 `CardView` 满幅铺底、App 叠加文字徽章。**没画的卡自动回退**到程序化渐变，可逐步替换。
 
-1. **换图标**：把 `presets[setId]` 里的 `symbol`（SF Symbol 名）改成你要的符号；或把 `CardView.iconBadge` 里的 `Image(systemName:)` 换成 `Image("你的图片资源名")`（把图片拖进 Asset Catalog）。
-2. **换配色**：改 `presets[setId]` 的 `primary` / `secondary` 两个 `Color`。
-3. **换稀有度阈值**：改 `SetTheme.rarity(forScore:)` 的分档区间。
+**画布规格**：`1500 × 2100 px`（**5:7 竖版**），sRGB，不透明 PNG，**满幅出血**；关键内容离边 ≥7%（外圈会被圆角/描边吃掉）。叠字安全区——顶部 ~17%（套系/稀有度/分值）与底部 ~26%（卡名/风味）会压深色蒙版，**这两条带请画得低对比**；主体放中间 ~57%。每套配色参考 `SetTheme.swift` 的 `primary/secondary`。
+
+**接入步骤**：
+1. 把 `ios/AntiqueAuction/CardArt.xcassets` 拖进 Xcode 工程（像源码文件夹那样拖入，勾选 App target）。里面已建好 41 个空 imageset：40 张卡（名 = `cardId`，如 `lost_paintings_01`）+ `card_back`。
+2. 加图二选一：
+   - **逐张**：Xcode 选中某 imageset，把 PNG 拖到「Universal」槽（属性栏 Scales 选 **Single Scale**）。
+   - **批量**：把所有 `cardId.png` 放进一个文件夹，跑 `ios/tools/install-card-art.sh <该文件夹>`，自动拷入并写好 `Contents.json`。
+3. 运行即看到真图；未加的卡仍走渐变兜底。
+
+**只想调色/图标**（不画图）：改 `SetTheme.swift` 的 `presets[setId]`（`primary`/`secondary`/`symbol`），或 `rarity(forScore:)` 的分档阈值。
 
 ### 8.2 动画与转场（`Components/Effects.swift` + 各视图）
 
