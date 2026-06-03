@@ -9,6 +9,8 @@
 
 > 本目录只包含 Swift 源码与本说明。**不含 `.xcodeproj`**（手写工程文件极易出错）。请按下方步骤在 Xcode 里新建工程并把源码拖进去。
 
+> 📖 想要「后端部署 + Xcode 跑通」的端到端图文串讲，见 [`../docs/deploy-guide.md`](../docs/deploy-guide.md)。
+
 ---
 
 ## 一、在 Xcode 新建工程

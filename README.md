@@ -18,6 +18,7 @@
 - `test/game_logic.test.js` — 游戏逻辑单元测试（Node 内置 `node:test`）
 - `ios/` — iOS SwiftUI 客户端源码（在 Xcode 中打开，详见 `ios/README.md`）
 - `PROTOCOL.md` — WebSocket 通信协议契约（前后端共同依据）
+- `docs/deploy-guide.md` — 从零跑通与上线的图文指引（Xcode 跑通 + Railway 部署，端到端）
 
 ## 本地运行后端
 
@@ -33,6 +34,8 @@ node --test      # game_logic 无外部依赖，无需先安装
 ```
 
 ## 部署（Railway）
+
+> 📖 手把手图文版（含 Xcode 跑通 + 端到端联调）见 [`docs/deploy-guide.md`](docs/deploy-guide.md)。下面是要点速览。
 
 本服务是**有状态、内存、单实例**的 WebSocket 服务，部署要点：
 
