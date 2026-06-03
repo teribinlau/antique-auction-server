@@ -110,31 +110,34 @@ test("放手：出价者按 highestBid 付款得牌，拍卖人收到钱", () =>
   assert.strictEqual(game.auctionCard, null, "auctionCard 应清空");
 });
 
-// ─── Test 3: Payment failure advances turn (regression for Task 1) ────────
+// ─── Test 3: Payment failure re-auctions the same card (not discarded) ────
 
-test("付款失败推进回合：payment_failed + turn_changed，phase=AUCTION，auctionCard=null", () => {
-  // Give Alice too little money so she can't pay highestBid=300
+test("付款失败重拍同一张：payment_failed + 重新开拍，不卡在 SNIPE，牌不丢弃", () => {
   const game = makeSnipeState({ highestBid: 300 });
-  game.players[0].money = makeMoney(50); // Alice only has 50
-  // Add more cards to deck so the game doesn't end immediately
+  game.players[0].money = makeMoney(50); // Alice(拍卖人) 只有 50，付不起 300
   game.deck = [
     { cardId: "paper_money_01", cardName: "全国粮票", flavorText: "", setId: "paper_money", setName: "旧朝纸币", setScore: 10 },
     { cardId: "paper_money_02", cardName: "大黑十",   flavorText: "", setId: "paper_money", setName: "旧朝纸币", setScore: 10 },
   ];
+  const failedCard = game.auctionCard;
 
-  // Alice tries to snipe but only pays 50 (< 300)
-  const paid = { 50: 1 };
-  const events = game.actionSnipe(true, paid);
+  // Alice 试图截拍但只付 50 (< 300) → 付款失败
+  const events = game.actionSnipe(true, { 50: 1 });
   const evArr = Array.isArray(events) ? events : [events];
 
-  const failEv    = evArr.find(e => e.event === "payment_failed");
-  const turnEv    = evArr.find(e => e.event === "turn_changed");
+  const failEv = evArr.find(e => e.event === "payment_failed");
+  assert.ok(failEv, "应包含 payment_failed 事件");
+  assert.strictEqual(failEv.playerId, 0, "失败者是 Alice(0)");
+  assert.ok(failEv.exposedMoney, "应亮出失败者手牌");
 
-  assert.ok(failEv,  "应包含 payment_failed 事件");
-  assert.ok(turnEv,  "应包含 turn_changed 事件（回合推进）");
-
-  assert.strictEqual(game.auctionCard, null, "auctionCard 应为 null（流拍清空）");
-  assert.strictEqual(game.phase, "AUCTION",  "phase 应回到 AUCTION，不应卡在 SNIPE");
+  // 原版：同一张牌重新拍卖，不丢弃、不卡在 SNIPE
+  assert.strictEqual(game.phase, "AUCTION", "phase 应回到 AUCTION（重拍），不卡在 SNIPE");
+  assert.ok(game.auctionCard, "auctionCard 不应清空（同一张牌重拍）");
+  assert.strictEqual(game.auctionCard.cardId, failedCard.cardId, "应是同一张牌");
+  assert.ok(evArr.find(e => e.event === "auction_started"), "应重新开拍 (auction_started)");
+  const bidTurn = evArr.find(e => e.event === "bid_turn");
+  assert.ok(bidTurn, "应给出新的 bid_turn");
+  assert.strictEqual(bidTurn.playerId, 1, "应轮到 Bob(1) 竞拍（拍卖人不竞拍）");
 });
 
 // ─── Test 4: Private deal normal win/loss ─────────────────────────────────
@@ -466,4 +469,33 @@ test("拍卖·全员放弃：无人出价则流拍归拍卖人（no_bids）", ()
   assert.strictEqual(noBids.winnerId, 0, "牌应归拍卖人 A(0)");
   assert.ok(game.players[0].antiques.some(c => c.cardId === "stamps_01"), "拍卖人应得到该牌");
   assert.strictEqual(game.auctionCard, null, "auctionCard 应清空");
+});
+
+// ─── Test 13: 放手后出价者付不起（2 人局：重拍无人可买 → 牌归拍卖人）──────
+
+test("放手·付不起：出价者超额诈唬付不起→亮钱；2 人局重拍无人可买→牌归拍卖人", () => {
+  const game = makeSnipeState({ highestBid: 30 });
+  // Bob(出价者, id 1) 只有 20，付不起 30（超额诈唬）
+  game.players[1].money = { 0: 0, 10: 2, 50: 0, 100: 0, 200: 0, 500: 0 }; // 20
+  game.players[0].money = { 0: 0, 10: 0, 50: 0, 100: 0, 200: 0, 500: 0 }; // Alice 0
+  game.deck = [
+    { cardId: "paper_money_01", cardName: "x", flavorText: "", setId: "paper_money", setName: "旧朝纸币", setScore: 10 },
+  ];
+  const card = game.auctionCard;
+
+  // Alice 放手 → Bob 自动付款，但付不起
+  const events = game.actionSnipe(false, {});
+  const evArr = Array.isArray(events) ? events : [events];
+
+  const failEv = evArr.find(e => e.event === "payment_failed");
+  assert.ok(failEv, "应 payment_failed");
+  assert.strictEqual(failEv.playerId, 1, "失败者是 Bob(1)");
+  assert.ok(failEv.exposedMoney, "应亮出 Bob 手牌");
+
+  // 2 人局：把失败者 Bob 排除后无人可竞拍 → 牌归拍卖人 Alice(0)
+  const noBids = evArr.find(e => e.event === "no_bids");
+  assert.ok(noBids, "无其他竞拍者 → no_bids");
+  assert.strictEqual(noBids.winnerId, 0, "牌归拍卖人 Alice(0)");
+  assert.ok(game.players[0].antiques.some(c => c.cardId === card.cardId), "Alice 应拿到该古董");
+  assert.strictEqual(game.auctionCard, null, "auctionCard 应清空（已归属拍卖人）");
 });

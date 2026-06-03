@@ -358,14 +358,36 @@ class GameState {
     const p = this.getPlayer(playerId);
     const exposed = {};
     for (const f in p.money) exposed[String(f)] = p.money[f];
-    const failedCard = this.auctionCard;
-    this.auctionCard = null;
-    this.bids = {};
-    this.passed = {};
+    // 原版：付不起 → 亮出手牌（证明付不起）+ 用同一张牌重新拍卖（不丢弃）。
+    // 失败者本次重拍出局（钱已公开，且避免其继续超额诈唬造成死循环）。
+    const card = this.auctionCard;
+    const auctionerId = this.currentPlayer().playerId;
+    this.phase = "AUCTION";
     this.highestBid = 0;
     this.highestBidder = -1;
-    const failEvent = { event: "payment_failed", playerId, exposedMoney: exposed, card: failedCard, currentPlayerId: this.currentPlayer().playerId };
-    return [failEvent, this._advanceTurn()].flat();
+    const n = this.players.length;
+    const startIdx = (this.currentPlayerIndex + 1) % n;
+    this.bidOrder = [];
+    for (let i = 0; i < n - 1; i++) this.bidOrder.push(this.players[(startIdx + i) % n].playerId);
+    this.passed = {};
+    for (const pl of this.players) this.passed[pl.playerId] = (pl.playerId === auctionerId);
+    this.passed[playerId] = true; // 失败者退出本次重拍
+    this.bidTurnId = this.bidOrder.find(id => !this.passed[id]);
+    if (this.bidTurnId === undefined) this.bidTurnId = -1;
+
+    const failEvent = { event: "payment_failed", playerId, exposedMoney: exposed, card, currentPlayerId: auctionerId };
+    if (this.bidTurnId === -1) {
+      // 没有其他人能竞拍（如 2 人局，唯一竞拍者正是失败者）→ 牌归拍卖人。
+      this._giveCardTo(auctionerId, card);
+      this.auctionCard = null;
+      return [failEvent, { event: "no_bids", winnerId: auctionerId }, this._advanceTurn()].flat();
+    }
+    // 同一张牌重新开拍（不再触发银锭奖励——奖励只在首次抽牌时给）。
+    return [
+      failEvent,
+      { event: "auction_started", card, deckSize: this.deck.length, auctionerId },
+      { event: "bid_turn", playerId: this.bidTurnId, auctionerId, highestBid: 0 },
+    ];
   }
 
   _giveCardTo(playerId, card) {

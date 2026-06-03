@@ -228,6 +228,7 @@ wss.on("connection", (ws) => {
       if (game.currentPlayer().playerId !== playerId) return;
       const ev = game.actionSnipe(msg.doSnipe, msg.paid || {});
       dispatchEvents(room, ev);
+      autoResolveDisconnectedBids(room); // 付款失败会用同一张牌重拍，新 bid_turn 也需跳过掉线者
       return;
     }
 
