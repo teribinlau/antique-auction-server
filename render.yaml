@@ -1,0 +1,19 @@
+# Render Blueprint —— 一键部署「古董拍卖」WebSocket 服务器到 Render 免费档。
+#
+# 用法：Render Dashboard → New → Blueprint → 选择本仓库 → Apply。
+# （也可不用本文件，走 New → Web Service 手动填，见 docs/deploy-guide.md。）
+#
+# 注意：本服务是有状态 / 内存 / 单实例 的 WebSocket 服务——
+#   · 固定单副本（免费档本就是 1 个，切勿手动扩容，否则房间会分散到不同实例）。
+#   · 免费档闲置 15 分钟会休眠，首次连接冷启动约 1 分钟；约朋友开一局再玩完全够用。
+#     想要常驻不休眠，把 plan 改成 starter（约 $7/月）即可。
+services:
+  - type: web
+    name: antique-auction-server
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /        # server.js 对 GET / 返回 "ok"，用作健康检查
+    autoDeploy: true          # push 到 main 即自动重新部署
