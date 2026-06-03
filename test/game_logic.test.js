@@ -324,3 +324,38 @@ test("银锭奖励不溢出：silverIngotCount 封顶在 SILVER_INGOT_BONUS.leng
   assert.ok(bonusEvents.length <= maxCount,
     `奖励事件数量(${bonusEvents.length}) 不应超过上限次数 ${maxCount}`);
 });
+
+// ─── Test 8: 放手·不找零自动付款（回归：曾错扣 0、凭空造钱）──────────────
+
+test("放手·不找零：出价者无对应面值时用最小的更大面值付款（回归：曾扣 0 白拿牌）", () => {
+  // Bob(出价者) 出价 10，但手里只有 废钞×2 与 50×2，没有 10 面值。
+  // 不找零规则下，最小 ≥10 的真实钞票是一张 50，应扣 50（而非旧 bug 的扣 0）。
+  const game = makeSnipeState({ highestBid: 10 });
+  game.players[1].money = { 0: 2, 10: 0, 50: 2, 100: 0, 200: 0, 500: 0 }; // 值 100
+  game.players[0].money = { 0: 0, 10: 0, 50: 0, 100: 0, 200: 0, 500: 0 }; // 值 0
+
+  const bobBefore   = totalMoney(game.players[1].money); // 100
+  const aliceBefore = totalMoney(game.players[0].money); // 0
+
+  const events = game.actionSnipe(false, {}); // Alice 放手
+  const evArr  = Array.isArray(events) ? events : [events];
+  assert.ok(evArr.find(e => e.event === "snipe_declined"), "应有 snipe_declined 事件");
+
+  // 扣的是一张 50（剩 1 张），废钞不参与支付（原样保留）。
+  assert.strictEqual(game.players[1].money[50], 1, "Bob 应被扣一张 50（剩 1 张）");
+  assert.strictEqual(game.players[1].money[0],  2, "废钞不参与支付，应原样保留 2 张");
+
+  // 金额：Bob 净少 50，Alice 净得 50。
+  assert.strictEqual(totalMoney(game.players[1].money), bobBefore - 50,   "Bob 应净少 50（而非 0）");
+  assert.strictEqual(totalMoney(game.players[0].money), aliceBefore + 50, "Alice 应净得 50");
+
+  // 守恒：系统内金钱总量不变（旧 bug 会凭空给拍卖人造一张 10，破坏守恒）。
+  assert.strictEqual(
+    totalMoney(game.players[0].money) + totalMoney(game.players[1].money),
+    aliceBefore + bobBefore,
+    "两人金钱总额应守恒（不凭空产生/消失）"
+  );
+
+  // 牌归 Bob。
+  assert.ok(game.players[1].antiques.some(c => c.cardId === "stamps_01"), "牌应归 Bob");
+});
