@@ -6,10 +6,14 @@ struct ConnectNameView: View {
 
     /// 昵称持久化到 UserDefaults。
     @AppStorage("playerName") private var playerName: String = ""
+    /// 服务器地址持久化到 UserDefaults（与 `Endpoints.serverURL` 共用同一个键）。
+    /// 换主机 / 换服务名直接在这里改，不必动代码重新编译。
+    @AppStorage(Endpoints.storageKey) private var serverURLString: String = Endpoints.defaultURLString
     @FocusState private var nameFocused: Bool
 
     private var canConnect: Bool {
         !playerName.trimmingCharacters(in: .whitespaces).isEmpty
+            && Endpoints.normalized(serverURLString) != nil
     }
 
     var body: some View {
@@ -39,6 +43,23 @@ struct ConnectNameView: View {
             }
             .padding(.horizontal)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("服务器地址")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("wss://你的应用.onrender.com", text: $serverURLString)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .submitLabel(.go)
+                    .onSubmit(connect)
+                Text("可直接粘贴 Render 的 https 地址，会自动转成 wss")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+
             Button(action: connect) {
                 HStack {
                     if client.connection == .connecting {
@@ -58,11 +79,18 @@ struct ConnectNameView: View {
             .padding(.horizontal)
 
             if client.connection == .disconnected {
-                Text("将连接到 \(Endpoints.serverURL.absoluteString)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                if let url = Endpoints.normalized(serverURLString) {
+                    Text("将连接到 \(url.absoluteString)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                } else {
+                    Text("请输入有效的服务器地址")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal)
+                }
             }
 
             Spacer()

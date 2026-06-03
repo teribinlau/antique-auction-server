@@ -141,7 +141,7 @@ Render 的体验和 Railway 几乎一样（连 GitHub 自动部署、自动 HTTP
 | Instance Type / Plan | **Free** |
 | Auto-Deploy | On（push 到 `main` 自动部署） |
 
-**取地址与验证**：Render 会自动分配 `https://<服务名>.onrender.com`（不像 Railway 需手动「生成域名」）。浏览器打开它应显示 `ok`；iOS 端 `Endpoints.swift` 填 `wss://<服务名>.onrender.com`。
+**取地址与验证**：Render 会自动分配 `https://<服务名>.onrender.com`（不像 Railway 需手动「生成域名」）。浏览器打开它应显示 `ok`；iOS 端在 **App 连接页**填 `wss://<服务名>.onrender.com`（或直接粘贴那个 `https://` 网址，会自动转 wss）。
 
 > 同样要点：**单副本**（免费档本就是 1 个，别扩容，否则房间会分散到不同实例）；`PORT` 由 Render 自动注入，`server.js` 已用 `process.env.PORT`，无需配置。
 
@@ -186,17 +186,11 @@ AntiqueAuction/
 
 **3. 设最低系统**：选中 target → **General → Minimum Deployments → iOS 16.0**。
 
-**4. 填服务器地址（关键）**：打开 `Networking/Endpoints.swift`，把第一部分第 6 步得到的 `wss://` 地址填进去：
-
-```swift
-enum Endpoints {
-    static let serverURL = URL(string: "wss://xxx.up.railway.app")!   // ← 换成你的 Railway 域名
-}
-```
+**4. 填服务器地址（关键）**：运行后在 **App 连接页的「服务器地址」栏**填入第一部分得到的地址即可——可直接**粘贴** Render / Railway 控制台的 `https://…` 网址，会自动转成 `wss://`。地址存在 App 里（UserDefaults），**换主机 / 换服务名都不必改代码重新编译**。
 
 **两种连接模式**：
 
-| 模式 | `serverURL` | ATS（Info.plist） | 适用 |
+| 模式 | App 内填入 | ATS（Info.plist） | 适用 |
 |---|---|---|---|
 | **生产（推荐）** | `wss://xxx.up.railway.app` | 不需要任何配置 | 模拟器 / 真机 / TestFlight |
 | **本地调试** | `ws://localhost:3000`（模拟器）<br/>`ws://<Mac局域网IP>:3000`（真机） | 需加 `NSAppTransportSecurity → NSAllowsLocalNetworking = YES` | 改后端时本机联调 |
@@ -259,7 +253,7 @@ flowchart LR
          └─ https://xxx.up.railway.app  →浏览器看到 "ok" ✅
 ③  地址换协议:  https → wss  ⇒  wss://xxx.up.railway.app
 ④  Xcode: 新建 App 工程 → 拖入 ios/AntiqueAuction 源码 → 最低 iOS 16
-⑤  Endpoints.swift: serverURL = wss://xxx.up.railway.app
+⑤  App 连接页「服务器地址」填: wss://xxx（或粘贴 https，自动转 wss）
 ⑥  ⌘R 跑两个模拟器 → A 建房 / B 输码加入 → 开战 🎮
 ```
 

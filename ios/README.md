@@ -35,7 +35,7 @@ AntiqueAuction/
     AntiqueAuctionApp.swift      # @main 入口
     AppRootView.swift            # 顶层路由 + 重连 + 横幅覆盖层
   Networking/
-    Endpoints.swift              # serverURL（部署后改这里）
+    Endpoints.swift              # 地址默认值 + 规范化（地址平时在 App 连接页填）
     GameClient.swift             # 网络层 + 状态中枢（核心）
   Models/
     Enums.swift                  # ConnState / Phase / Denomination
@@ -68,19 +68,12 @@ AntiqueAuction/
 
 ## 三、配置服务器地址
 
-打开 `Networking/Endpoints.swift`，把 `serverURL` 改成你的实际地址：
+**地址在 App 里填，不用改代码。** 运行后在**连接页的「服务器地址」栏**输入即可，自动持久化（下次启动带出）：
 
-```swift
-// 生产（Railway 等，wss 加密，真机/模拟器都能直连）
-static let serverURL = URL(string: "wss://你的应用.up.railway.app")!
-```
+- **生产（Render / Railway 等）**：填 `wss://你的应用.onrender.com`（或你的 Railway 域名）。也可**直接粘贴**控制台给的 `https://…` 网址——会自动转成 `wss://`。`wss://` 走 TLS，**无需任何 ATS 配置**。
+- **本地调试**：填 `ws://localhost:3000`（`server.js` 默认端口）。**模拟器**可直接连；**真机**要把 `localhost` 换成你 Mac 的局域网 IP（如 `ws://192.168.1.20:3000`）并同网段。`ws://` 是明文，**仍需下方的 ATS 例外**。
 
-- **真机 / TestFlight / App Store**：用 `wss://`（加密），无需任何 ATS 配置。
-- **本地调试**：把上面那行换成下方注释里的本地地址（`server.js` 默认监听 3000）：
-  ```swift
-  static let serverURL = URL(string: "ws://localhost:3000")!
-  ```
-  本地用 `localhost` 时若用**模拟器**可直接连；用**真机**需把 `localhost` 换成你 Mac 的局域网 IP（如 `ws://192.168.1.20:3000`），并确保手机与电脑同网段。
+> 默认占位与输入规范化逻辑（`https→wss`、补协议等）在 `Networking/Endpoints.swift` 的 `defaultURLString` / `normalized(_:)`，一般无需改动此文件。
 
 ### 本地 `ws://`（明文）需要 ATS 例外
 
