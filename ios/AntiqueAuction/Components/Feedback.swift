@@ -14,8 +14,10 @@ import AudioToolbox
 ///    日后放入真实 `.wav/.caf` 即可无缝替换（见 README「视觉与手感」）。
 ///
 /// ⚠️ 纯表现层。所有 UIKit 反馈 API 须在主线程调用，故整体标 `@MainActor`。
+/// 不需要 `ObservableObject`：没有任何视图「观察」它（开关状态走 @AppStorage），
+/// 它只是被调用方法的单例服务——叠加 @MainActor 且无 @Published 时还会让 ObservableObject 合成失败。
 @MainActor
-final class Feedback: ObservableObject {
+final class Feedback {
 
     /// 全局共享实例（视图与 GameClient 接法都引用同一份偏好）。
     static let shared = Feedback()
