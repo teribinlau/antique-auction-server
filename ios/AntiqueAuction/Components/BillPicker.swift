@@ -93,6 +93,8 @@ struct BillPicker: View {
                     set: { newValue in
                         // 夹在 [0, owned] 区间内。
                         let clamped = max(0, min(newValue, owned))
+                        // 仅当实际发生变化时给一次轻触感（避免到达上下限仍触发）。
+                        if clamped != picked { Feedback.shared.selectTick() }
                         if clamped == 0 {
                             selection[key] = nil
                         } else {
@@ -107,6 +109,8 @@ struct BillPicker: View {
                     .frame(minWidth: 56, alignment: .trailing)
             }
             .disabled(owned == 0)
+            // 选钞行带轻微缩放反馈（picked 变化时）。
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: picked)
         }
         .opacity(owned == 0 ? 0.45 : 1)
     }

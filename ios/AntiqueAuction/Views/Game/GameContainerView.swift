@@ -9,39 +9,52 @@ struct GameContainerView: View {
             if let state = client.state {
                 VStack(spacing: 0) {
                     GameStatusBar(state: state, client: client)
-                    Divider()
+                    Divider().overlay(Color.white.opacity(0.08))
                     ScrollView {
                         VStack(spacing: 16) {
                             // 对手区（始终可见，展示张数 = 诈唬信息）。
                             opponentsSection(state)
 
-                            // 按阶段路由。
-                            switch state.phase {
-                            case .auction:
-                                AuctionView(client: client, state: state)
-                            case .snipe:
-                                SnipeView(client: client, state: state)
-                            case .privateDeal:
-                                PrivateDealView(client: client, state: state)
-                            case .gameOver:
-                                // game_over 通常由 GameOverView 全屏接管；这里兜底。
-                                Text("游戏结束")
-                                    .font(.title2)
-                                    .padding()
-                            case .waiting:
-                                ProgressView("等待开局…")
-                                    .padding()
-                            }
+                            // 按阶段路由。切阶段时做淡入+轻微上移过渡。
+                            phaseContent(state)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                .id(state.phase)            // phase 变化即重建并触发过渡
 
                             // 我方手牌与古董。
                             MyHandSection(me: state.me)
                         }
                         .padding()
+                        .animation(.easeInOut(duration: 0.3), value: state.phase)
                     }
+                    .scrollContentBackground(.hidden)   // 透出底层古董背景（iOS 16+）
                 }
+                // 截拍成功 / 私盘我方胜出时的庆祝礼花（覆盖整屏，不挡操作）。
+                .overlay(CelebrationOverlay(trigger: client.celebratePulse))
             } else {
                 ProgressView("正在同步牌局…")
+                    .tint(.antiqueGold)
             }
+        }
+    }
+
+    /// 按阶段路由子视图（抽出便于加统一过渡）。
+    @ViewBuilder
+    private func phaseContent(_ state: GameView) -> some View {
+        switch state.phase {
+        case .auction:
+            AuctionView(client: client, state: state)
+        case .snipe:
+            SnipeView(client: client, state: state)
+        case .privateDeal:
+            PrivateDealView(client: client, state: state)
+        case .gameOver:
+            // game_over 通常由 GameOverView 全屏接管；这里兜底。
+            Text("游戏结束")
+                .font(.title2)
+                .padding()
+        case .waiting:
+            ProgressView("等待开局…")
+                .padding()
         }
     }
 
@@ -73,14 +86,19 @@ struct GameStatusBar: View {
                 statusItem(icon: "dollarsign.circle.fill", text: "白银 \(state.silverIngotCount)")
             }
             Spacer()
-            // 当前行动玩家（拍卖人）。
-            Text("行动：\(state.playerName(for: state.currentPlayerId))")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(state.isMyTurn ? Color.accentColor : .secondary)
+            // 当前行动玩家（拍卖人）。轮到我时金色 + 呼吸高亮。
+            Text(state.isMyTurn ? "轮到你" : "行动：\(state.playerName(for: state.currentPlayerId))")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(state.isMyTurn ? Color.antiqueGold : .secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .pulseHighlight(active: state.isMyTurn, color: .antiqueGold, cornerRadius: 8)
+                // currentPlayerId 变化时平滑过渡。
+                .animation(.easeInOut(duration: 0.25), value: state.currentPlayerId)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(.systemBackground))
+        .background(.ultraThinMaterial)
     }
 
     private var phaseLabel: String {
@@ -147,14 +165,17 @@ struct MyHandSection: View {
                 Text("我的古董（\(me.antiques.count) 件）")
                     .font(.subheadline.weight(.semibold))
                 ForEach(me.antiques) { card in
-                    CardView(card: card, compact: true)
+                    // 属于已集齐套系的卡加金色「集齐」徽章。
+                    CardView(card: card,
+                             compact: true,
+                             inCompleteSet: me.completeSets.contains(card.setId))
                 }
             }
 
             if !me.completeSets.isEmpty {
                 Label("已集齐 \(me.completeSets.count) 套", systemImage: "checkmark.seal.fill")
                     .font(.subheadline)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.antiqueGold)
             }
         }
     }

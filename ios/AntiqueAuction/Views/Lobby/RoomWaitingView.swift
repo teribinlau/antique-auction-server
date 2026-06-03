@@ -27,6 +27,7 @@ struct RoomWaitingView: View {
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.tertiary)
                             }
+                            .listRowBackground(Color.white.opacity(0.04))
                         }
                         // 补足空位提示（最多 4 人）。
                         ForEach(client.lobbyPlayers.count..<4, id: \.self) { _ in
@@ -38,6 +39,7 @@ struct RoomWaitingView: View {
                                     .foregroundStyle(.tertiary)
                                 Spacer()
                             }
+                            .listRowBackground(Color.clear)
                         }
                     } header: {
                         Text("玩家 \(client.lobbyPlayers.count)/4")
@@ -45,6 +47,7 @@ struct RoomWaitingView: View {
                         Text("分享房间码 “\(client.roomCode ?? "")” 邀请好友。至少 2 人即可开始。")
                     }
                 }
+                .scrollContentBackground(.hidden)   // 透出底层古董背景（iOS 16+）
 
                 VStack(spacing: 12) {
                     Button {
@@ -55,7 +58,7 @@ struct RoomWaitingView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(canStart ? Color.accentColor : Color.gray)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.black)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(!canStart)

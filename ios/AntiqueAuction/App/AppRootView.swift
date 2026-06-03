@@ -14,13 +14,22 @@ struct AppRootView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // 全局雅致暗色背景（宣纸/檀木氛围），置于所有内容底层。
+            AntiqueBackground()
             content
+            // 银锭奖励：全屏金色闪光（由 silverBonusPulse 计数驱动）。
+            GoldenFlashOverlay(trigger: client.silverBonusPulse, text: client.silverBonusText)
             // 全局横幅覆盖层（error / payment_failed / silver_bonus）。
             BannerOverlay(client: client)
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
         }
+        // 统一强制深色：让所有系统色（secondary / secondarySystemBackground / 主文字）
+        // 解析为深色变体，与 AntiqueBackground 的暗色氛围一致，避免浅色设备下色彩冲突。
+        .preferredColorScheme(.dark)
+        // 全局金色强调（按钮/高亮统一基调，呼应「古董金」）。
+        .tint(.antiqueGold)
     }
 
     @ViewBuilder

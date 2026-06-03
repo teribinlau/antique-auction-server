@@ -181,3 +181,70 @@ SwiftUI 视图 ──调用便利方法──▶ GameClient.send(ClientAction)
 | `requestState()` | `request_state` | `state_update`(+`turn_changed`)，**仅游戏中** |
 
 协议权威定义见仓库根目录 `PROTOCOL.md`。
+
+---
+
+## 八、视觉与手感（程序化美术 / 动画 / 音效触感）
+
+为让客户端更像一款「游戏」，在**不改动任何游戏逻辑与网络协议**的前提下，新增了一层纯表现层打磨。
+全部走**无外部资源**路线（程序化美术 + 系统音效/触感），并留好接入真实资源的扩展点。**最低仍为 iOS 16，未使用任何 iOS 17+ API。**
+
+### 8.1 主题与程序化牌面（`Components/SetTheme.swift` + `CardView.swift`）
+
+- **`SetTheme`**：把每个 `setId` **集中**映射到「主题色（深/浅两色渐变）+ SF Symbol 图标 + 稀有度档位」。
+  10 套牌按 `setScore` 自动分四档：**传世**（≥800）/ **珍品**（≥350）/ **精品**（≥160）/ **普通**（其余）。
+  未知 `setId` 会安全退回中性默认样式（石青 + `questionmark.circle`），不会崩。
+- **`CardView`**：用 `SetTheme` 渲染「套牌渐变背景 + 圆形图标徽章 + 套系/稀有度/分值角标 + 圆角/阴影/描边」。
+  - 珍品及以上：金色描边 + 柔和高光。
+  - 仅传世（最高档）：附加**克制流光**（`TimelineView` 驱动的缓慢斜向高光带，节奏慢、很淡，不晃眼）。
+  - 新增可选参数 `inCompleteSet`：命中已集齐套系时显示金色「集齐套系」徽章。**原有 `CardView(card:)` / `CardView(card:, compact:)` 调用方无需改动。**
+- **统一氛围**：`AntiqueBackground`（雅致暗色「宣纸/檀木」渐变 + 顶部暖金弱光）铺在全局底层；
+  App 统一 `.preferredColorScheme(.dark)` 与 `.tint(Color.antiqueGold)`（古董金），各屏用 `.ultraThinMaterial` 卡片 + 透明滚动背景（`.scrollContentBackground(.hidden)`）透出底纹，风格一致。
+
+#### 想换成真实美术？
+
+只改 `SetTheme` 一处即可：
+
+1. **换图标**：把 `presets[setId]` 里的 `symbol`（SF Symbol 名）改成你要的符号；或把 `CardView.iconBadge` 里的 `Image(systemName:)` 换成 `Image("你的图片资源名")`（把图片拖进 Asset Catalog）。
+2. **换配色**：改 `presets[setId]` 的 `primary` / `secondary` 两个 `Color`。
+3. **换稀有度阈值**：改 `SetTheme.rarity(forScore:)` 的分档区间。
+
+### 8.2 动画与转场（`Components/Effects.swift` + 各视图）
+
+均为 iOS 16 可用手段（`withAnimation` / `.animation(_:value:)` / `.transition` / `TimelineView` / `repeatForever`），无 `.symbolEffect`/`.phaseAnimator`/`.keyframeAnimator` 等 17+ API：
+
+- **拍卖开拍**：`auctionCard` 出现/换牌时缩放淡入（`.transition` + `.id(card.id)` + 弹簧动画）。
+- **出价反馈**：`highestBid` 变化时最高价数字弹动；轮到出价的对手用呼吸高亮（`PulseHighlight`）。
+- **回合/阶段切换**：`phase` 变化时子视图淡入上移过渡；「轮到你」状态条与各操作框用金色呼吸高亮。
+- **结算/胜负**：截拍成功、私盘我方胜出、`game_over` 第一名都会放一次**星标礼花**（`CelebrationOverlay`，纯 SwiftUI 粒子）；终局奖杯金色呼吸 + 冠军行金边光晕。
+- **银锭奖励**：`silver_bonus` 触发**全屏金色闪光 + 文案**（`GoldenFlashOverlay`）。
+- **选钞**：`BillPicker` 加减时行内轻微弹动 + 轻触感。
+- **减弱动画偏好**：`@AppStorage("pref.reduceMotion")`。打开后，呼吸/礼花/闪光等会退化为静态或大幅缩短，照顾对动画敏感的用户。
+
+### 8.3 音效与触感（`Components/Feedback.swift`）
+
+集中管理器 `Feedback.shared`（`@MainActor`），用 **UIKit 触感**（`UIImpactFeedbackGenerator` / `UINotificationFeedbackGenerator` / `UISelectionFeedbackGenerator`）+ **AudioToolbox 系统音效**（`AudioServicesPlaySystemSound`，**无需打包音频**）映射关键时刻：出价 / 放弃 / 截拍成功 / 截拍放手 / 轮到你 / 私盘成交 / 银锭奖励 / 错误 / 游戏结束。
+
+- **接入点（集中、避免重复触发）**：在 `GameClient.reduce` 之后追加一个**纯副作用**方法 `emitFeedback(for:)`——
+  只读取事件与 `myPlayerId` 派发反馈，**不修改任何状态**，与游戏/重连归约逻辑完全解耦。
+  需要「区分是不是我」的事件（如轮到你、截拍成功庆祝）在此据 `myPlayerId` 判定；
+  我方出价/暗标的即时手感在按钮处本地触发，并在 `emitFeedback` 里对「自己的 `bid_placed`」做了抑制，避免双重反馈。
+- **偏好开关**：`@AppStorage("pref.soundEnabled")` 与 `@AppStorage("pref.hapticsEnabled")`（默认开）。
+  切换入口 `FeedbackToggleButtons` 放在**连接页底部**（含减弱动画开关）与**大厅工具栏**（音效/触感）。
+
+#### 扩展点：放入真实音频
+
+`Feedback.playCustomSound(named:fallback:)` 会**优先**在 App bundle 内查找 `named` 对应的 `.caf/.wav/.aiff/.mp3`，
+找到就播放，否则回退到传入的系统 `SystemSoundID`。接入真实音频：
+
+1. 把音频文件（建议 `.caf` 或 `.wav`）拖进 Xcode 工程，勾选你的 App target（确保 **Copy Bundle Resources** 含该文件）。
+2. 在 `Feedback` 里把对应时刻的 `sound(...)` 调用改成例如：
+   ```swift
+   func bidPlaced() {
+       impact(.light)
+       playCustomSound(named: "bid", fallback: 1104)   // bundle 有 bid.caf 就用它，否则回退系统音
+   }
+   ```
+3. 无需改任何调用方——视图/`emitFeedback` 仍只调 `Feedback.shared.bidPlaced()`。
+
+> 触感无对应资源概念，始终走系统 Haptics；若日后接入 Core Haptics 自定义波形，同样集中在 `Feedback` 内替换即可。

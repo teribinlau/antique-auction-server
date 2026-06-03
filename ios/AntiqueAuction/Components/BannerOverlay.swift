@@ -10,7 +10,7 @@ struct BannerOverlay: View {
             if let banner = client.banner {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.bubble.fill")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.antiqueGold)
                     Text(banner)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(.white)
@@ -26,8 +26,13 @@ struct BannerOverlay: View {
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.accentColor)
+                        .fill(.ultraThinMaterial)
                         .shadow(radius: 6, y: 3)
+                )
+                .overlay(
+                    // 金色细描边，呼应整体古董金基调（同时保证深色材质上文字可读）。
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.antiqueGold.opacity(0.7), lineWidth: 1)
                 )
                 .padding(.horizontal, 16)
                 .transition(.move(edge: .top).combined(with: .opacity))

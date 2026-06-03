@@ -9,6 +9,8 @@ struct AuctionView: View {
 
     @State private var bidAmount: Int = 10
     @State private var showDealPicker = false
+    /// 最高价数字弹动用的缩放（highestBid 变化时短暂放大再回弹）。
+    @State private var bidBump = false
 
     /// 是否已开拍（auctionCard 非空即视为已开拍）。
     private var auctionInProgress: Bool { state.auctionCard != nil }
@@ -35,7 +37,7 @@ struct AuctionView: View {
             VStack(spacing: 12) {
                 Text("你是拍卖人 · 拍卖进行中")
                     .font(.headline)
-                CardView(card: card)
+                revealCard(card)
                 bidStatusBox
                 Text("等待其他玩家依次出价…")
                     .font(.footnote)
@@ -45,6 +47,7 @@ struct AuctionView: View {
             VStack(spacing: 16) {
                 Text("轮到你了 · 请选择行动")
                     .font(.headline)
+                    .foregroundStyle(Color.antiqueGold)
                 Text("开拍一张新古董，或与持有相同套系的对手发起私盘。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -58,7 +61,7 @@ struct AuctionView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(state.deckSize > 0 ? Color.accentColor : Color.gray)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(state.deckSize == 0)
@@ -82,6 +85,9 @@ struct AuctionView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .padding(14)
+            // 轮到我做选择：呼吸高亮整块。
+            .pulseHighlight(active: true, color: .antiqueGold, cornerRadius: 14)
         }
     }
 
@@ -93,7 +99,7 @@ struct AuctionView: View {
                 Text("\(state.playerName(for: state.currentPlayerId)) 正在拍卖")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                CardView(card: card)
+                revealCard(card)
                 bidStatusBox
 
                 if isMyBidTurn {
@@ -120,7 +126,21 @@ struct AuctionView: View {
         }
     }
 
-    /// 最高价信息框。
+    /// 拍卖牌「开拍」呈现：缩放淡入 + 翻牌感（3D 翻转）。auctionCard 变化（换牌）即重放。
+    @ViewBuilder
+    private func revealCard(_ card: Card) -> some View {
+        CardView(card: card)
+            .transition(
+                .asymmetric(
+                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                    removal: .opacity
+                )
+            )
+            .id(card.id)   // 换牌时 id 变化 → 触发插入过渡（翻牌/缩放淡入）
+            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: card.id)
+    }
+
+    /// 最高价信息框。highestBid 变化时数字弹动。
     private var bidStatusBox: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -129,6 +149,16 @@ struct AuctionView: View {
                     .foregroundStyle(.secondary)
                 Text("\(state.highestBid)")
                     .font(.title3.weight(.bold).monospacedDigit())
+                    .foregroundStyle(Color.antiqueGold)
+                    .scaleEffect(bidBump ? 1.25 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.5), value: bidBump)
+                    .onChange(of: state.highestBid) { _ in
+                        // 数字弹一下再回弹。
+                        bidBump = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                            bidBump = false
+                        }
+                    }
             }
             Spacer()
             if state.highestBidder >= 0 {
@@ -170,6 +200,8 @@ struct AuctionView: View {
 
             HStack(spacing: 12) {
                 Button {
+                    // 我方出价：本地即时手感（别人收到由事件流发反馈）。
+                    Feedback.shared.bidPlaced()
                     client.placeBid(bidAmount)
                 } label: {
                     Text("出价 \(bidAmount)")
@@ -177,10 +209,11 @@ struct AuctionView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.accentColor)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 Button {
+                    Feedback.shared.bidPassed()
                     client.passBid()
                 } label: {
                     Text("放弃")
@@ -198,6 +231,8 @@ struct AuctionView: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
         )
+        // 轮到我出价：呼吸高亮整框，强调「该你了」。
+        .pulseHighlight(active: isMyBidTurn, color: .antiqueGold, cornerRadius: 12)
         .onAppear {
             // 默认起拍价 = 比当前最高价高一档，最少 10。
             bidAmount = max(10, state.highestBid + 10)

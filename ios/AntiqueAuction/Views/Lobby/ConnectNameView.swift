@@ -43,7 +43,7 @@ struct ConnectNameView: View {
                 HStack {
                     if client.connection == .connecting {
                         ProgressView()
-                            .tint(.white)
+                            .tint(.black)
                     }
                     Text(client.connection == .connecting ? "连接中…" : "进入大厅")
                         .font(.headline)
@@ -51,7 +51,7 @@ struct ConnectNameView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
                 .background(canConnect ? Color.accentColor : Color.gray)
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .disabled(!canConnect || client.connection == .connecting)
@@ -66,6 +66,16 @@ struct ConnectNameView: View {
             }
 
             Spacer()
+
+            // 音效 / 触感 / 减弱动画开关（小设置入口）。
+            VStack(spacing: 6) {
+                FeedbackToggleButtons(showMotion: true)
+                Text("音效 · 触感 · 动画")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+
             Spacer()
         }
         .onAppear {

@@ -16,10 +16,10 @@ struct OpponentBills: View {
                 if highlighted {
                     Text("出价中…")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.black)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
-                        .background(Color.accentColor)
+                        .background(Color.antiqueGold)
                         .clipShape(Capsule())
                 }
             }
@@ -34,7 +34,7 @@ struct OpponentBills: View {
                 if !opponent.completeSets.isEmpty {
                     Label("\(opponent.completeSets.count) 套", systemImage: "checkmark.seal.fill")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.antiqueGold)
                 }
             }
 
@@ -49,12 +49,10 @@ struct OpponentBills: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(.secondarySystemBackground))
+                .fill(.ultraThinMaterial)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(highlighted ? Color.accentColor : Color.clear, lineWidth: 2)
-        )
+        // 轮到该对手出价时呼吸高亮（脉冲），强化「现在是谁」。
+        .pulseHighlight(active: highlighted, color: .antiqueGold, cornerRadius: 10)
     }
 }
 

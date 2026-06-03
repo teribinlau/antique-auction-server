@@ -71,7 +71,7 @@ struct SnipeView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(paidIsValid ? Color.accentColor : Color.gray)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(!paidIsValid)
@@ -100,5 +100,7 @@ struct SnipeView: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
         )
+        // 该你决定是否截拍：呼吸高亮强调。
+        .pulseHighlight(active: true, color: .antiqueGold, cornerRadius: 12)
     }
 }

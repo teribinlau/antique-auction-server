@@ -86,6 +86,8 @@ struct PrivateDealView: View {
             BillPicker(money: state.me.money, selection: $paid)
 
             Button {
+                // 暗标提交：本地即时手感（成交结果由事件流发反馈）。
+                Feedback.shared.bidPlaced()
                 client.submitOffer(paid: paid)
                 submitted = true
             } label: {
@@ -94,7 +96,7 @@ struct PrivateDealView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(Color.accentColor)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
@@ -103,6 +105,8 @@ struct PrivateDealView: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
         )
+        // 该你暗标：呼吸高亮强调。
+        .pulseHighlight(active: true, color: .antiqueGold, cornerRadius: 12)
     }
 
     private var waitingForCounterpart: some View {

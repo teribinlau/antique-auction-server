@@ -40,6 +40,14 @@ final class GameClient: ObservableObject {
     /// 进入游戏后是否已收到首个 state_update。用于区分「等待室」与「游戏中」。
     @Published private(set) var gameStarted: Bool = false
 
+    // ── 纯表现层信号（递增计数，仅用于驱动一次性动画；不参与任何游戏逻辑）──
+    /// 银锭奖励金色闪光触发计数（silver_bonus 时 +1）。
+    @Published private(set) var silverBonusPulse: Int = 0
+    /// 银锭闪光文案（随计数更新）。
+    @Published private(set) var silverBonusText: String = ""
+    /// 庆祝礼花触发计数（截拍成功 / 私盘成交时 +1，仅当与「我」相关）。
+    @Published private(set) var celebratePulse: Int = 0
+
     // ── 内部 ─────────────────────────────────────────────────
     private var task: URLSessionWebSocketTask?
     private var session: URLSession
@@ -200,6 +208,10 @@ final class GameClient: ObservableObject {
     private func reduce(_ event: GameEvent) {
         lastEvent = event
 
+        // 纯表现层副作用：按事件派发音效/触感。集中在此处接入，避免视图多处重复触发。
+        // ⚠️ 只读不写状态，绝不影响下方的游戏/重连归约逻辑。
+        emitFeedback(for: event)
+
         switch event {
         case let .roomList(rooms):
             self.rooms = rooms
@@ -315,6 +327,56 @@ final class GameClient: ObservableObject {
         // 以下事件仅通过 lastEvent 驱动一次性 UI（提示/动画），无需改持久状态。
         case .auctionStarted, .privateDealStarted, .dealOfferSubmitted,
              .dealTie, .dealResolved, .unknown:
+            break
+        }
+    }
+
+    /// 按事件派发音效/触感（纯表现层副作用）。
+    ///
+    /// 只读取事件与 `myPlayerId` 做判断，**不修改任何状态**——与 reduce 的游戏/重连逻辑完全解耦，
+    /// 单独成方法便于关停或替换。需要「区分是不是我」的事件（轮到你/截拍成功等）在这里据 myPlayerId 判定，
+    /// 避免在视图层重复触发。
+    private func emitFeedback(for event: GameEvent) {
+        let fb = Feedback.shared
+        switch event {
+        case let .bidTurn(playerId, _, _):
+            // 只有轮到「我」出价才强提示；轮到别人不打扰。
+            if playerId == myPlayerId { fb.yourTurn() }
+        case let .turnChanged(playerId, _):
+            // 新一轮拍卖人是我（可开拍/发起私盘）时提示。
+            if playerId == myPlayerId { fb.yourTurn() }
+        case let .bidPlaced(playerId, _):
+            // 我自己出价的手感已由按钮触发；这里只对「别人出价」发轻反馈。
+            if playerId != myPlayerId { fb.bidPlaced() }
+        case let .bidPassed(playerId):
+            if playerId != myPlayerId { fb.bidPassed() }
+        case .auctionStarted:
+            fb.auctionStarted()
+        case let .snipeSuccess(winnerId):
+            fb.snipeSuccess()
+            // 截拍成功的赢家若是我，放一次庆祝礼花。
+            if winnerId == myPlayerId { celebratePulse &+= 1 }
+        case .snipeDeclined, .noBids:
+            fb.snipeDeclined()
+        case let .dealResolved(resolved):
+            fb.dealResolved()
+            // 私盘我方胜出时庆祝。
+            if resolved.effectiveWinnerId == myPlayerId { celebratePulse &+= 1 }
+        case let .silverBonus(bonus, count):
+            fb.silverBonus()
+            // 触发全屏金色闪光（文案与横幅一致风格）。
+            silverBonusText = "白银加成 +\(bonus)（第 \(count) 次）"
+            silverBonusPulse &+= 1
+        case .paymentFailed, .error:
+            fb.error()
+        case .gameOver:
+            fb.gameOver()
+        // 其余事件不发反馈（大厅/同步/中间态）。
+        case .roomList, .roomCreated, .joinedRoom, .rejoinedRoom,
+             .playerJoined, .playerLeft, .playerDisconnected, .playerReconnected,
+             .gameStarted, .stateUpdate, .snipePrompt,
+             .privateDealStarted, .dealOfferSubmitted, .dealTie, .dealTargets,
+             .unknown:
             break
         }
     }

@@ -25,12 +25,15 @@ struct LobbyView: View {
                                 roomRow(room)
                             }
                             .buttonStyle(.plain)
+                            // 行底用半透明材质，透出古董背景又保持可读卡片感。
+                            .listRowBackground(roomRowBackground)
                         }
                     }
                 } header: {
                     Text("可加入的房间")
                 }
             }
+            .scrollContentBackground(.hidden)   // 透出底层古董背景（iOS 16+）
             .refreshable {
                 client.listRooms()
                 // 给服务端一点回包时间（下拉刷新动画体验）。
@@ -38,6 +41,10 @@ struct LobbyView: View {
             }
             .navigationTitle("大厅")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    // 音效 / 触感小设置入口。
+                    FeedbackToggleButtons()
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         client.listRooms()
@@ -71,7 +78,7 @@ struct LobbyView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.accentColor)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.black)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     Button {
@@ -97,6 +104,13 @@ struct LobbyView: View {
         .sheet(isPresented: $showJoinSheet) {
             JoinRoomSheet(client: client)
         }
+    }
+
+    /// 房间行底色（半透明材质 + 细描边的卡片感）。
+    private var roomRowBackground: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .padding(.vertical, 4)
     }
 
     @ViewBuilder
