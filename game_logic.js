@@ -129,6 +129,37 @@ function splitIntoBills(amount) {
   return result;
 }
 
+// 出价者「放手」时的自动付款（不找零规则）：从其【实际持有】的钞票中，
+// 选出「总额 ≥ target 的最小金额」组合。"0"（废钞）无面值、不参与支付。
+// 返回选中的钞票 {面值字符串: 张数}；若有面值钞票的总额仍 < target（付不起）返回 null。
+function selectBillsAtLeast(money, target) {
+  const faces = [10, 50, 100, 200, 500];
+  const owned = faces.map((f) => money[f] || 0);
+  const totalValue = faces.reduce((sum, f, i) => sum + f * owned[i], 0);
+  if (totalValue < target) return null;
+  if (target <= 0) return {};
+
+  // 在各面值张数范围内搜索「总额 ≥ target 的最小总额」组合（达标即剪枝，再加只会更大）。
+  let best = null;
+  const search = (i, counts, total) => {
+    if (total >= target) {
+      if (best === null || total < best.total) best = { total, counts: counts.slice() };
+      return;
+    }
+    if (i >= faces.length) return;
+    for (let c = owned[i]; c >= 0; c--) {
+      counts[i] = c;
+      search(i + 1, counts, total + faces[i] * c);
+    }
+    counts[i] = 0;
+  };
+  search(0, new Array(faces.length).fill(0), 0);
+
+  const result = {};
+  faces.forEach((f, i) => { if (best.counts[i] > 0) result[String(f)] = best.counts[i]; });
+  return result;
+}
+
 class GameState {
   constructor(playerNames) {
     this.players = playerNames.map((name, i) => ({
@@ -288,9 +319,11 @@ class GameState {
       return [{ event: "snipe_success", winnerId: this.currentPlayer().playerId }, this._advanceTurn()].flat();
     } else {
       const bidder = this.getPlayer(this.highestBidder);
-      const autoPaid = splitIntoBills(this.highestBid);
-      const bidderTotal = getTotalMoney(bidder.money);
-      if (bidderTotal < this.highestBid) return this._failPayment(bidder.playerId);
+      // 不找零：从出价者【实际持有】的钞票里，选「总额 ≥ highestBid 的最小金额」组合付款。
+      // （旧实现用 splitIntoBills(highestBid) 生成「理想面值」，与出价者真实手牌无关；
+      //   配合 deductMoneyExact 的 max(0,…) 下限夹断，会出现少扣甚至零扣——出价者白拿牌。）
+      const autoPaid = selectBillsAtLeast(bidder.money, this.highestBid);
+      if (autoPaid === null) return this._failPayment(bidder.playerId);
       deductMoneyExact(bidder.money, autoPaid);
       addMoney(this.currentPlayer().money, autoPaid);
       this._giveCardTo(this.highestBidder, this.auctionCard);
