@@ -354,34 +354,59 @@ test("放手·不找零：出价者无对应面值时用最小的更大面值付
   assert.ok(game.players[1].antiques.some(c => c.cardId === "stamps_01"), "牌应归 Bob");
 });
 
-// ─── Test 9: 私盘换牌·不均分（赢家拿走输家整套持有）────────────────────
+// ─── Test 9: 私盘换牌·min 规则（原版：对方 3 张我 1 张，赢也只换 1 张）──────
 
-test("私盘换牌·不均分：赢家拿走输家该套全部牌（1 vs 3 → 4‑0，曾只换 min=1）", () => {
+test("私盘换牌·min 规则：对方 3 张我 1 张，我赢也只换 1 张（→ 2-2，非 4-0）", () => {
   const game = new GameState(["Alice", "Bob"]);
   game.deck = [];
   game.phase = "AUCTION";
   game.currentPlayerIndex = 0;
 
   const mk = (n) => ({ cardId: `stamps_0${n}`, cardName: "x", flavorText: "", setId: "stamps", setName: "绝版邮票", setScore: 90 });
-  game.players[0].antiques = [mk(1)];            // Alice 1 张
-  game.players[1].antiques = [mk(2), mk(3), mk(4)]; // Bob 3 张（合计 4）
+  game.players[0].antiques = [mk(1)];               // Alice 1 张
+  game.players[1].antiques = [mk(2), mk(3), mk(4)]; // Bob 3 张
   game.players[0].money = { 0: 0, 10: 0, 50: 0, 100: 5, 200: 0, 500: 0 };
   game.players[1].money = { 0: 0, 10: 0, 50: 0, 100: 5, 200: 0, 500: 0 };
 
   const stamps = (p) => p.antiques.filter(c => c.setId === "stamps").length;
 
-  game.startPrivateDeal(0, 1, "stamps");      // Alice 发起
-  game.submitDealOffer(0, { 100: 2 });        // Alice 出 200
+  game.startPrivateDeal(0, 1, "stamps");           // Alice 发起
+  game.submitDealOffer(0, { 100: 2 });             // Alice 出 200
   const res = game.submitDealOffer(1, { 100: 1 }); // Bob 出 100 → Alice 胜
-  const arr = Array.isArray(res) ? res : [res];
-  const ev  = arr.find(e => e.event === "deal_resolved");
+  const ev  = (Array.isArray(res) ? res : [res]).find(e => e.event === "deal_resolved");
   assert.ok(ev, "应有 deal_resolved");
   assert.strictEqual(ev.winnerId, 0, "Alice 应获胜");
 
-  // 关键：赢家拿走输家该套全部牌 → Alice 4 / Bob 0（旧 min 逻辑会停在 2‑2）。
+  // 原版：换牌数 = min(1,3) = 1。Alice 只从 Bob 拿 1 张 → 2-2（不是 4-0）。
+  assert.strictEqual(ev.tradeCount, 1, "换牌数应为 min(1,3)=1");
+  assert.strictEqual(stamps(game.players[0]), 2, "Alice 得 1 张 → 共 2 张");
+  assert.strictEqual(stamps(game.players[1]), 2, "Bob 只失去 1 张 → 剩 2 张");
+  assert.ok(!game.players[0].completeSets.includes("stamps"), "Alice 只 2 张，未集齐");
+});
+
+// ─── Test 14: 私盘换牌·各 2 张 → 换 2 张集齐整套（min=2）────────────────────
+
+test("私盘换牌·各 2 张：赢家换走对方 2 张 → 集齐 4 张（min=2）", () => {
+  const game = new GameState(["Alice", "Bob"]);
+  game.deck = [];
+  game.phase = "AUCTION";
+  game.currentPlayerIndex = 0;
+
+  const mk = (n) => ({ cardId: `stamps_0${n}`, cardName: "x", flavorText: "", setId: "stamps", setName: "绝版邮票", setScore: 90 });
+  game.players[0].antiques = [mk(1), mk(2)]; // Alice 2 张
+  game.players[1].antiques = [mk(3), mk(4)]; // Bob 2 张
+  game.players[0].money = { 0: 0, 10: 0, 50: 0, 100: 5, 200: 0, 500: 0 };
+  game.players[1].money = { 0: 0, 10: 0, 50: 0, 100: 5, 200: 0, 500: 0 };
+
+  const stamps = (p) => p.antiques.filter(c => c.setId === "stamps").length;
+
+  game.startPrivateDeal(0, 1, "stamps");
+  game.submitDealOffer(0, { 100: 2 });             // Alice 200
+  const res = game.submitDealOffer(1, { 100: 1 }); // Bob 100 → Alice 胜
+  const ev = (Array.isArray(res) ? res : [res]).find(e => e.event === "deal_resolved");
+  assert.strictEqual(ev.tradeCount, 2, "min(2,2)=2");
   assert.strictEqual(stamps(game.players[0]), 4, "Alice 应集齐 4 张");
   assert.strictEqual(stamps(game.players[1]), 0, "Bob 应一张不剩");
-  assert.strictEqual(ev.tradeCount, 3, "tradeCount 应为输家持有的 3 张");
   assert.ok(game.players[0].completeSets.includes("stamps"), "Alice 应集齐 stamps 套");
 });
 

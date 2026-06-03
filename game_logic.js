@@ -448,11 +448,18 @@ class GameState {
     const winner = initiatorWins ? initiator : target;
     const loser = initiatorWins ? target : initiator;
 
-    // 换牌：赢家拿走输家该套系的【全部】牌（原版：两人此套牌最终都归赢家）。
-    const loserCards = getAntiquesBySet(loser.antiques, this.dealSetId);
-    const tradeCount = loserCards.length;
-    loser.antiques = loser.antiques.filter(c => !loserCards.includes(c));
-    for (const card of loserCards) winner.antiques.push(card);
+    // 换牌张数 = 双方该套持有的【较小值】（原版："对方只有 1 张就只换 1 张，哪怕你有 2~3 张"；
+    // 双方各 2 张时换 2 张 = 整套归赢家）。因每套仅 4 张，min 必 ≤ 2，对应原版"2 或 4 张"。
+    // 赢家从输家处拿走 tradeCount 张。
+    const tradeCount = Math.min(
+      getAntiquesBySet(initiator.antiques, this.dealSetId).length,
+      getAntiquesBySet(target.antiques, this.dealSetId).length
+    );
+    for (let i = 0; i < tradeCount; i++) {
+      const card = getAntiquesBySet(loser.antiques, this.dealSetId)[0];
+      loser.antiques = loser.antiques.filter(c => c !== card);
+      winner.antiques.push(card);
+    }
 
     // 交换双方暗标金额（各付各的，净价 = 差额）。
     addMoney(target.money, this.dealOffer);
