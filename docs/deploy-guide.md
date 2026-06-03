@@ -120,6 +120,31 @@ iOS 要填的地址   wss://xxx.up.railway.app
 
 > 计费：Railway 按用量计费并提供一定免费额度，超出需绑卡；具体以 [railway.app](https://railway.app) 当前方案为准。其它支持「常驻、单实例、WebSocket」的平台（Render、Fly.io 等）同理——关键是别让它休眠或多副本。
 
+### 备选：部署到 Render 免费档（Railway 替代，$0）
+
+Render 的体验和 Railway 几乎一样（连 GitHub 自动部署、自动 HTTPS/WSS），区别是**免费档闲置 15 分钟会休眠**、下次有人连接时冷启动约 1 分钟——对「约局再玩」完全够用；嫌冷启动烦就把套餐升到 **Starter（约 $7/月）**常驻不休眠。
+
+本仓库已带 `render.yaml`（Blueprint），两种方式任选其一：
+
+**方式 A · 一键 Blueprint（推荐）**
+登录 [render.com](https://render.com)（用 GitHub 登录）→ **New → Blueprint** → 选择本仓库 → Render 读取 `render.yaml` 自动建好服务 → **Apply**。
+
+**方式 B · 手动建 Web Service**
+**New → Web Service** → 连接本仓库 → 关键设置：
+
+| 字段 | 值 |
+|---|---|
+| Runtime | Node |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Health Check Path | `/` |
+| Instance Type / Plan | **Free** |
+| Auto-Deploy | On（push 到 `main` 自动部署） |
+
+**取地址与验证**：Render 会自动分配 `https://<服务名>.onrender.com`（不像 Railway 需手动「生成域名」）。浏览器打开它应显示 `ok`；iOS 端 `Endpoints.swift` 填 `wss://<服务名>.onrender.com`。
+
+> 同样要点：**单副本**（免费档本就是 1 个，别扩容，否则房间会分散到不同实例）；`PORT` 由 Render 自动注入，`server.js` 已用 `process.env.PORT`，无需配置。
+
 ---
 
 # 第二部分 · 在 Xcode 跑通 iOS 客户端
@@ -237,5 +262,7 @@ flowchart LR
 ⑤  Endpoints.swift: serverURL = wss://xxx.up.railway.app
 ⑥  ⌘R 跑两个模拟器 → A 建房 / B 输码加入 → 开战 🎮
 ```
+
+> 用 **Render** 则把 ①② 换成：**New → Blueprint**（自动读取 `render.yaml`）→ 得到 `https://xxx.onrender.com`；③ 起同理（`https` 换 `wss`）。
 
 协议契约见 [`PROTOCOL.md`](../PROTOCOL.md)；iOS 架构与视觉打磨见 [`ios/README.md`](../ios/README.md)。

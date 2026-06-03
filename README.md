@@ -18,7 +18,8 @@
 - `test/game_logic.test.js` — 游戏逻辑单元测试（Node 内置 `node:test`）
 - `ios/` — iOS SwiftUI 客户端源码（在 Xcode 中打开，详见 `ios/README.md`）
 - `PROTOCOL.md` — WebSocket 通信协议契约（前后端共同依据）
-- `docs/deploy-guide.md` — 从零跑通与上线的图文指引（Xcode 跑通 + Railway 部署，端到端）
+- `docs/deploy-guide.md` — 从零跑通与上线的图文指引（Xcode 跑通 + Railway/Render 部署，端到端）
+- `render.yaml` — Render 一键部署蓝图（Railway 的免费替代）
 
 ## 本地运行后端
 
@@ -33,9 +34,11 @@ npm start        # 监听 ws://localhost:3000（PORT 可由环境变量覆盖）
 node --test      # game_logic 无外部依赖，无需先安装
 ```
 
-## 部署（Railway）
+## 部署（Railway / Render）
 
 > 📖 手把手图文版（含 Xcode 跑通 + 端到端联调）见 [`docs/deploy-guide.md`](docs/deploy-guide.md)。下面是要点速览。
+>
+> 仓库已带 `render.yaml`，可在 [Render](https://render.com) 走 **New → Blueprint** 一键部署到免费档（Railway 的免费替代；免费档闲置会休眠，约局再玩够用）。
 
 本服务是**有状态、内存、单实例**的 WebSocket 服务，部署要点：
 
