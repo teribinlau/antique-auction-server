@@ -58,14 +58,14 @@ function autoResolveDisconnectedBids(room) {
   while (
     game.phase === "AUCTION" &&
     game.auctionCard &&
-    Array.isArray(game.bidOrder) &&
-    game.bidTurnIndex < game.bidOrder.length &&
-    guard++ < game.players.length
+    game.bidTurnId !== undefined &&
+    game.bidTurnId !== -1 &&
+    guard++ < game.players.length + 1
   ) {
-    const bidderId = game.bidOrder[game.bidTurnIndex];
+    const bidderId = game.bidTurnId;
     const p = room.players.find(pp => pp.playerId === bidderId);
     if (p && p.connected) break;       // 轮到的是在线玩家，停止
-    const ev = game.passBid(bidderId);
+    const ev = game.passBid(bidderId); // 掉线者自动放弃（退出本次竞拍）
     if (ev && ev.error) break;         // 异常兜底，避免死循环
     dispatchEvents(room, ev);
   }
