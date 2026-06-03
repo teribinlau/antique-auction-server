@@ -49,6 +49,28 @@ function dispatchEvents(room, events) {
   broadcastState(room);
 }
 
+// 自动替「掉线且轮到其出价」的玩家放弃竞价，避免拍卖卡在等一个回不来的人。
+// 每次竞价推进后（开拍/出价/放弃/掉线）调用；会连续跳过多个掉线者，直至轮到在线玩家或竞价结束。
+function autoResolveDisconnectedBids(room) {
+  const game = room.game;
+  if (!game) return;
+  let guard = 0;
+  while (
+    game.phase === "AUCTION" &&
+    game.auctionCard &&
+    Array.isArray(game.bidOrder) &&
+    game.bidTurnIndex < game.bidOrder.length &&
+    guard++ < game.players.length
+  ) {
+    const bidderId = game.bidOrder[game.bidTurnIndex];
+    const p = room.players.find(pp => pp.playerId === bidderId);
+    if (p && p.connected) break;       // 轮到的是在线玩家，停止
+    const ev = game.passBid(bidderId);
+    if (ev && ev.error) break;         // 异常兜底，避免死循环
+    dispatchEvents(room, ev);
+  }
+}
+
 // ── 心跳：定期 ping，剔除无响应的死连接（触发其 close → 保座或回收房间） ──
 const HEARTBEAT_MS = 30000;
 const heartbeat = setInterval(() => {
@@ -175,6 +197,7 @@ wss.on("connection", (ws) => {
       if (game.currentPlayer().playerId !== playerId) return;
       const ev = game.startAuction();
       dispatchEvents(room, ev);
+      autoResolveDisconnectedBids(room);
       return;
     }
 
@@ -185,6 +208,7 @@ wss.on("connection", (ws) => {
       const ev = game.placeBid(playerId, msg.amount);
       if (ev.error) return;
       dispatchEvents(room, ev);
+      autoResolveDisconnectedBids(room);
       return;
     }
 
@@ -195,6 +219,7 @@ wss.on("connection", (ws) => {
       const ev = game.passBid(playerId);
       if (ev.error) return;
       dispatchEvents(room, ev);
+      autoResolveDisconnectedBids(room);
       return;
     }
 
@@ -266,6 +291,9 @@ wss.on("connection", (ws) => {
       const ev = room.game.nextTurn();
       dispatchEvents(room, ev);
     }
+
+    // 若掉线者正轮到出价，自动替其放弃，避免拍卖卡住
+    autoResolveDisconnectedBids(room);
   });
 });
 
