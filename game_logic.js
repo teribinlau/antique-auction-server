@@ -181,7 +181,8 @@ class GameState {
     this.highestBidder = -1;
     this.highestBid = 0;
     this.bidOrder = []; // 顺位出价列表（不含拍卖人）
-    this.bidTurnIndex = 0; // 当前轮到第几位
+    this.bidTurnIndex = 0; // (弃用) 旧单轮拍卖的索引，保留以防引用
+    this.bidTurnId = -1; // 英式拍卖：当前轮到出价的玩家 id（-1 = 无）
 
     // 私盘状态
     this.dealInitiator = -1;
@@ -243,8 +244,6 @@ class GameState {
   startAuction() {
     if (this.deck.length === 0) return { error: "牌堆已空" };
     this.auctionCard = this.deck.shift();
-    this.bids = {};
-    this.passed = {};
     this.highestBid = 0;
     this.highestBidder = -1;
 
@@ -256,11 +255,10 @@ class GameState {
     for (let i = 0; i < n - 1; i++) {
       this.bidOrder.push(this.players[(startIdx + i) % n].playerId);
     }
-    this.bidTurnIndex = 0;
-
-    for (const p of this.players) {
-      this.passed[p.playerId] = (p.playerId === auctionerId);
-    }
+    // passed[id]=true 表示已退出本次竞拍（英式拍卖：退出后不可再加价）。拍卖人不参与。
+    this.passed = {};
+    for (const p of this.players) this.passed[p.playerId] = (p.playerId === auctionerId);
+    this.bidTurnId = this.bidOrder.length > 0 ? this.bidOrder[0] : -1;
 
     const events = [];
     if (this.auctionCard.setId === "silver_ingots" && this.silverIngotCount < SILVER_INGOT_BONUS.length - 1) {
@@ -270,35 +268,56 @@ class GameState {
       events.push({ event: "silver_bonus", bonus, count: this.silverIngotCount });
     }
     events.push({ event: "auction_started", card: this.auctionCard, deckSize: this.deck.length, auctionerId });
-    events.push({ event: "bid_turn", playerId: this.bidOrder[0], auctionerId, highestBid: 0 });
+    if (this.bidTurnId === -1) {
+      // 理论上不会（至少 2 人）：无人可竞拍则直接流拍给拍卖人。
+      return events.concat([this._resolveBids()].flat());
+    }
+    events.push({ event: "bid_turn", playerId: this.bidTurnId, auctionerId, highestBid: 0 });
     return events;
   }
 
+  // 英式拍卖：出价必须高于当前最高价；玩家可在自己回合反复加价。
   placeBid(playerId, amount) {
-    if (this.bidOrder[this.bidTurnIndex] !== playerId) return { error: "还没轮到你" };
-    if (this.bids[playerId] !== undefined) return { error: "已出价" };
-    this.bids[playerId] = amount;
-    this.passed[playerId] = false;
-    if (amount > this.highestBid) { this.highestBid = amount; this.highestBidder = playerId; }
+    if (this.bidTurnId !== playerId) return { error: "还没轮到你" };
+    if (this.passed[playerId]) return { error: "你已退出本次竞拍" };
+    if (amount <= this.highestBid) return { error: `出价须高于当前最高价 ${this.highestBid}` };
+    this.highestBid = amount;
+    this.highestBidder = playerId;
     const bidEvent = { event: "bid_placed", playerId, amount };
     return [bidEvent, ...this._advanceBidTurn()];
   }
 
+  // 放弃 = 退出本次竞拍（英式拍卖：退出后不可再回来加价）。
   passBid(playerId) {
-    if (this.bidOrder[this.bidTurnIndex] !== playerId) return { error: "还没轮到你" };
-    if (this.bids[playerId] !== undefined) return { error: "已出价，不能放弃" };
+    if (this.bidTurnId !== playerId) return { error: "还没轮到你" };
+    if (this.passed[playerId]) return { error: "你已退出本次竞拍" };
     this.passed[playerId] = true;
     const passEvent = { event: "bid_passed", playerId };
     return [passEvent, ...this._advanceBidTurn()];
   }
 
   _advanceBidTurn() {
-    this.bidTurnIndex++;
-    if (this.bidTurnIndex < this.bidOrder.length) {
-      const nextId = this.bidOrder[this.bidTurnIndex];
-      return [{ event: "bid_turn", playerId: nextId, auctionerId: this.currentPlayer().playerId, highestBid: this.highestBid }];
+    const next = this._nextContestant(this.bidTurnId);
+    if (next !== -1) {
+      this.bidTurnId = next;
+      return [{ event: "bid_turn", playerId: next, auctionerId: this.currentPlayer().playerId, highestBid: this.highestBid }];
     }
+    // 没有人能再高过当前最高出价者 → 结算。
+    this.bidTurnId = -1;
     return [this._resolveBids()].flat();
+  }
+
+  // 从 fromId 之后按 bidOrder 顺位找下一个「仍在场且不是当前最高出价者」的玩家；无则 -1。
+  _nextContestant(fromId) {
+    const order = this.bidOrder;
+    if (order.length === 0) return -1;
+    let startPos = order.indexOf(fromId);
+    if (startPos === -1) startPos = 0;
+    for (let k = 1; k <= order.length; k++) {
+      const pid = order[(startPos + k) % order.length];
+      if (!this.passed[pid] && pid !== this.highestBidder) return pid;
+    }
+    return -1;
   }
 
   _resolveBids() {

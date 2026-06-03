@@ -16,6 +16,8 @@ struct AuctionView: View {
     private var auctionInProgress: Bool { state.auctionCard != nil }
     /// 是否轮到我出价。
     private var isMyBidTurn: Bool { client.currentBidderId == state.myId }
+    /// 最低可出价：英式拍卖只能加价，须高于当前最高价一档（最少 10）。
+    private var minBid: Int { max(10, state.highestBid + 10) }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -188,8 +190,14 @@ struct AuctionView: View {
             Text("轮到你出价")
                 .font(.headline)
                 .foregroundStyle(Color.accentColor)
+            Text(state.highestBid > 0
+                 ? "出价须高于当前最高价 \(state.highestBid)"
+                 : "起拍价 \(minBid) 起，之后只能加价")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
-            Stepper(value: $bidAmount, in: 0...100000, step: 10) {
+            Stepper(value: $bidAmount, in: minBid...100000, step: 10) {
                 HStack {
                     Text("出价金额")
                     Spacer()
@@ -234,8 +242,12 @@ struct AuctionView: View {
         // 轮到我出价：呼吸高亮整框，强调「该你了」。
         .pulseHighlight(active: isMyBidTurn, color: .antiqueGold, cornerRadius: 12)
         .onAppear {
-            // 默认起拍价 = 比当前最高价高一档，最少 10。
-            bidAmount = max(10, state.highestBid + 10)
+            // 默认起拍价 = 比当前最高价高一档（minBid）。
+            bidAmount = minBid
+        }
+        .onChange(of: state.highestBid) { _ in
+            // 别人加价后，把我的起拍价顶到新的最低线（避免选到已不合法的低价）。
+            bidAmount = max(bidAmount, minBid)
         }
     }
 }
