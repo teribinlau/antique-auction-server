@@ -18,6 +18,7 @@ struct SnipeView: View {
         VStack(spacing: 16) {
             if let card = state.auctionCard {
                 CardView(card: card)
+                    .frame(maxWidth: 240)
             }
 
             HStack {
