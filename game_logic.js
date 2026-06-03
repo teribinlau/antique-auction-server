@@ -190,6 +190,8 @@ class GameState {
     this.dealOffer = {};
     this.dealCounter = {};
     this.dealTieCount = 0;
+    this.dealInitiatorSubmitted = false;
+    this.dealTargetSubmitted = false;
   }
 
   getPlayer(id) { return this.players.find(p => p.playerId === id); }
@@ -231,9 +233,10 @@ class GameState {
   }
 
   _getScore(p) {
-    let score = getTotalMoney(p.money);
-    for (const setId of p.completeSets) score += SET_SCORES[setId] || 0;
-    return score;
+    // 原版 Kuhhandel：得分 =（各完整套牌分值之和）× 套牌数量；现金不计分。
+    let setSum = 0;
+    for (const setId of p.completeSets) setSum += SET_SCORES[setId] || 0;
+    return setSum * p.completeSets.length;
   }
 
   // ── 行动 A：开拍 ──────────────────────────────────────────
@@ -357,6 +360,10 @@ class GameState {
     this.dealTarget = targetId;
     this.dealSetId = setId;
     this.dealTieCount = 0;
+    this.dealOffer = {};
+    this.dealCounter = {};
+    this.dealInitiatorSubmitted = false;
+    this.dealTargetSubmitted = false;
     this.phase = "PRIVATE_DEAL";
     return { event: "private_deal_started", initiatorId, targetId, setId };
   }
@@ -365,14 +372,19 @@ class GameState {
     if (this.phase !== "PRIVATE_DEAL") return { error: "不在私盘阶段" };
     if (playerId === this.dealInitiator) {
       this.dealOffer = paid;
-      const offerCount = Object.values(paid).reduce((s, c) => s + c, 0);
-      return { event: "deal_offer_submitted", targetId: this.dealTarget, initiatorId: this.dealInitiator, offerCount, setId: this.dealSetId };
+      this.dealInitiatorSubmitted = true;
     } else if (playerId === this.dealTarget) {
       this.dealCounter = paid;
-      return this._resolvePrivateDeal();
+      this.dealTargetSubmitted = true;
     } else {
       return { error: "你不在这个私盘中" };
     }
+    // 双方都暗标完成才结算（与提交先后无关，避免一方先交就用空报价提前结算）。
+    if (this.dealInitiatorSubmitted && this.dealTargetSubmitted) {
+      return this._resolvePrivateDeal();
+    }
+    const offerCount = Object.values(paid).reduce((s, c) => s + c, 0);
+    return { event: "deal_offer_submitted", targetId: this.dealTarget, initiatorId: this.dealInitiator, offerCount, setId: this.dealSetId };
   }
 
   _resolvePrivateDeal() {
@@ -380,58 +392,35 @@ class GameState {
     const target = this.getPlayer(this.dealTarget);
     const offerTotal = Object.entries(this.dealOffer).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
     const counterTotal = Object.entries(this.dealCounter).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
-    const tradeCount = Math.min(getAntiquesBySet(initiator.antiques, this.dealSetId).length, getAntiquesBySet(target.antiques, this.dealSetId).length);
 
+    // 平局：原版反复重新暗标，直到分出高低（不掷币）。清空本轮报价，双方重标。
     if (offerTotal === counterTotal) {
       this.dealTieCount++;
-      if (this.dealTieCount >= 2) {
-        // 随机决定赢家，双方按各自报价交换金钱，赢家获得卡牌
-        const coinFlip = Math.random() < 0.5;
-        const winner = coinFlip ? initiator : target;
-        const loser = coinFlip ? target : initiator;
-        for (let i = 0; i < tradeCount; i++) {
-          const card = getAntiquesBySet(loser.antiques, this.dealSetId)[0];
-          loser.antiques = loser.antiques.filter(c => c !== card);
-          winner.antiques.push(card);
-        }
-        // 双方各付各自的报价给对方
-        addMoney(target.money, this.dealOffer);
-        deductMoneyExact(initiator.money, this.dealOffer);
-        addMoney(initiator.money, this.dealCounter);
-        deductMoneyExact(target.money, this.dealCounter);
-        this._checkCompleteSet(winner.playerId);
-        const result = { event: "deal_resolved", tieForcedWinner: winner.playerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
-        return [result, this._advanceTurn()].flat();
-      }
+      this.dealOffer = {};
+      this.dealCounter = {};
+      this.dealInitiatorSubmitted = false;
+      this.dealTargetSubmitted = false;
       return { event: "deal_tie", tieCount: this.dealTieCount, initiatorId: this.dealInitiator, targetId: this.dealTarget, setId: this.dealSetId };
     }
 
-    let winnerId, loserId;
-    if (offerTotal > counterTotal) {
-      for (let i = 0; i < tradeCount; i++) {
-        const card = getAntiquesBySet(target.antiques, this.dealSetId)[0];
-        target.antiques = target.antiques.filter(c => c !== card);
-        initiator.antiques.push(card);
-      }
-      addMoney(target.money, this.dealOffer);
-      deductMoneyExact(initiator.money, this.dealOffer);
-      addMoney(initiator.money, this.dealCounter);
-      deductMoneyExact(target.money, this.dealCounter);
-      winnerId = initiator.playerId; loserId = target.playerId;
-    } else {
-      for (let i = 0; i < tradeCount; i++) {
-        const card = getAntiquesBySet(initiator.antiques, this.dealSetId)[0];
-        initiator.antiques = initiator.antiques.filter(c => c !== card);
-        target.antiques.push(card);
-      }
-      addMoney(initiator.money, this.dealCounter);
-      deductMoneyExact(target.money, this.dealCounter);
-      addMoney(target.money, this.dealOffer);
-      deductMoneyExact(initiator.money, this.dealOffer);
-      winnerId = target.playerId; loserId = initiator.playerId;
-    }
-    this._checkCompleteSet(winnerId);
-    const result = { event: "deal_resolved", winnerId, loserId, tradeCount, offerTotal, counterTotal, initiatorId: this.dealInitiator };
+    const initiatorWins = offerTotal > counterTotal;
+    const winner = initiatorWins ? initiator : target;
+    const loser = initiatorWins ? target : initiator;
+
+    // 换牌：赢家拿走输家该套系的【全部】牌（原版：两人此套牌最终都归赢家）。
+    const loserCards = getAntiquesBySet(loser.antiques, this.dealSetId);
+    const tradeCount = loserCards.length;
+    loser.antiques = loser.antiques.filter(c => !loserCards.includes(c));
+    for (const card of loserCards) winner.antiques.push(card);
+
+    // 交换双方暗标金额（各付各的，净价 = 差额）。
+    addMoney(target.money, this.dealOffer);
+    deductMoneyExact(initiator.money, this.dealOffer);
+    addMoney(initiator.money, this.dealCounter);
+    deductMoneyExact(target.money, this.dealCounter);
+
+    this._checkCompleteSet(winner.playerId);
+    const result = { event: "deal_resolved", winnerId: winner.playerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
     return [result, this._advanceTurn()].flat();
   }
 
