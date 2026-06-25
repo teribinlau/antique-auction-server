@@ -26,6 +26,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     from PIL import Image
@@ -109,6 +110,16 @@ def _extract(raw_text: str) -> bytes:
     raise ValueError("no-image")
 
 
+def normalize_base(b: str):
+    """中转站常忘了写 /v1：只有域名时自动补上。返回 (规范化地址, 是否自动补过)。"""
+    b = b.rstrip("/")
+    if re.search(r"/v\d+$", b):                 # 已经是 .../v1 /v2 等
+        return b, False
+    if not urlparse(b).path.strip("/"):         # 只有域名、没路径
+        return b + "/v1", True
+    return b, False
+
+
 def gen_one(api_key, base_url, prompt, model, size, quality, debug=False) -> bytes:
     url = base_url.rstrip("/") + "/images/generations"
     payload = {"model": model, "prompt": prompt, "n": 1}
@@ -157,6 +168,11 @@ def gen_one(api_key, base_url, prompt, model, size, quality, debug=False) -> byt
 
         if debug:
             print(f"      --- 返回前 800 字 ---\n{raw[:800]}\n      ---------------------", flush=True)
+        head = raw.lstrip()[:200].lower()
+        if head.startswith("<!doctype") or head.startswith("<html") or "<title>new api" in head:
+            raise RuntimeError("接口返回的是网页(HTML)，多半是接口地址少了 /v1 或路径不对。\n"
+                               f"      实际请求了：{url}\n"
+                               "      把 OPENAI_BASE_URL 设成形如 https://域名/v1 再试。")
         try:
             return _extract(raw)
         except ValueError:
@@ -183,6 +199,7 @@ def main() -> None:
     if not PROMPTS_FILE.exists():
         sys.exit(f"找不到提示词文件：{PROMPTS_FILE}")
     base_url = args.base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+    base_url, autov1 = normalize_base(base_url)
     size = args.size or DEFAULT_SIZE.get(args.model, "1024x1536")
 
     cards = json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
@@ -194,7 +211,8 @@ def main() -> None:
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     total, done, skipped, failed = len(cards), 0, 0, []
     print(f"共 {total} 张  →  {out}")
-    print(f"模型={args.model}  尺寸={size}  quality={args.quality}  接口={base_url}\n")
+    print(f"模型={args.model}  尺寸={size}  quality={args.quality}  接口={base_url}"
+          f"{'  (已自动补 /v1)' if autov1 else ''}\n")
     for i, c in enumerate(cards, 1):
         cid = c["cardId"]; dst = out / f"{cid}.png"
         if dst.exists() and not args.force:
