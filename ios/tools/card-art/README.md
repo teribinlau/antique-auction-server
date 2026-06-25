@@ -28,6 +28,15 @@ python3 generate_card_art.py --model dall-e-3        # 中转站只代理 dall-e
 ```
 脚本会自动按模型选尺寸、并兼容返回 b64 或 url 两种形态。**先 `--only lost_paintings_01` 测一张**，确认中转站真的能出图再批量。
 
+#### Gemini 出图模型（如 `gemini-3-pro-image-preview`）
+这类模型不走 `/images/generations`，而是把图片夹在 **`/chat/completions`** 的回复里。脚本对名字含 `gemini` 的模型会**自动切到 chat 调用**并从回复里抠图，无需额外设置：
+```bash
+export OPENAI_BASE_URL=https://你的中转站域名/v1
+python3 generate_card_art.py --model gemini-3-pro-image-preview          # 质量高
+python3 generate_card_art.py --model gemini-3.1-flash-image-preview      # 更快更省
+```
+（如需手动指定通道：`--mode chat` 或 `--mode images`。）
+
 ## 生成
 ```bash
 cd ios/tools/card-art

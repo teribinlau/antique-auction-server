@@ -120,17 +120,25 @@ def normalize_base(b: str):
     return b, False
 
 
-def gen_one(api_key, base_url, prompt, model, size, quality, debug=False) -> bytes:
-    url = base_url.rstrip("/") + "/images/generations"
-    payload = {"model": model, "prompt": prompt, "n": 1}
-    if size:
-        payload["size"] = size
-    if model.startswith("dall-e"):
-        payload["response_format"] = "b64_json"
-        if model == "dall-e-3":
-            payload["quality"] = "hd" if quality == "high" else "standard"
+def gen_one(api_key, base_url, prompt, model, size, quality, mode="auto", debug=False) -> bytes:
+    if mode == "auto":                          # gemini 等：图在 chat 回复里；其它走 images 端点
+        mode = "chat" if "gemini" in model.lower() else "images"
+    if mode == "chat":
+        url = base_url.rstrip("/") + "/chat/completions"
+        payload = {"model": model,
+                   "messages": [{"role": "user", "content": prompt}],
+                   "stream": False}
     else:
-        payload["quality"] = quality
+        url = base_url.rstrip("/") + "/images/generations"
+        payload = {"model": model, "prompt": prompt, "n": 1}
+        if size:
+            payload["size"] = size
+        if model.startswith("dall-e"):
+            payload["response_format"] = "b64_json"
+            if model == "dall-e-3":
+                payload["quality"] = "hd" if quality == "high" else "standard"
+        else:
+            payload["quality"] = quality
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -186,6 +194,8 @@ def main() -> None:
     ap.add_argument("--out", default=str(HERE / "card_art_out"))
     ap.add_argument("--quality", default="high", choices=["low", "medium", "high"])
     ap.add_argument("--model", default="gpt-image-1")
+    ap.add_argument("--mode", default="auto", choices=["auto", "chat", "images"],
+                    help="auto=按模型自动选(gemini→chat，其它→images)")
     ap.add_argument("--base-url", default=None)
     ap.add_argument("--size", default=None, help="覆盖默认尺寸，如 1024x1536")
     ap.add_argument("--only", default=None, help="只生成某个 cardId")
@@ -211,7 +221,9 @@ def main() -> None:
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     total, done, skipped, failed = len(cards), 0, 0, []
     print(f"共 {total} 张  →  {out}")
-    print(f"模型={args.model}  尺寸={size}  quality={args.quality}  接口={base_url}"
+    eff_mode = args.mode if args.mode != "auto" else ("chat" if "gemini" in args.model.lower() else "images")
+    extra = f"尺寸={size}  quality={args.quality}  " if eff_mode == "images" else ""
+    print(f"模型={args.model}  调用={eff_mode}  {extra}接口={base_url}"
           f"{'  (已自动补 /v1)' if autov1 else ''}\n")
     for i, c in enumerate(cards, 1):
         cid = c["cardId"]; dst = out / f"{cid}.png"
@@ -219,7 +231,7 @@ def main() -> None:
             print(f"[{i}/{total}] {cid}  已存在，跳过"); skipped += 1; continue
         print(f"[{i}/{total}] {cid}  生成中…", flush=True)
         try:
-            raw = gen_one(api_key, base_url, c["prompt"], args.model, size, args.quality, args.debug)
+            raw = gen_one(api_key, base_url, c["prompt"], args.model, size, args.quality, args.mode, args.debug)
             crop_to_5x7(Image.open(io.BytesIO(raw))).save(dst, "PNG")
             done += 1; print(f"        ✓ {dst}")
         except Exception as e:  # noqa: BLE001
