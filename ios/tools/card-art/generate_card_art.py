@@ -2,21 +2,28 @@
 # -*- coding: utf-8 -*-
 """批量生成「古董拍卖」卡牌插画（One Piece TCG 风格），输出 5:7 / 1500x2100 的 PNG。
 
-用法：
+支持官方 OpenAI 与「中转站」(自定义 base URL)，并兼容 gpt-image-1 / dall-e-3 / dall-e-2。
+
+用法（官方 OpenAI）：
     export OPENAI_API_KEY=sk-...
     pip install openai pillow
-    python3 generate_card_art.py                 # 生成全部 41 张到 ./card_art_out
-    python3 generate_card_art.py --only seals_02  # 只生成 / 重生成某一张
-    python3 generate_card_art.py --quality medium # 省钱档（默认 high）
-    python3 generate_card_art.py --force          # 覆盖已生成的图
+    python3 generate_card_art.py
+
+用法（中转站 / 自建网关）：
+    export OPENAI_API_KEY=中转站给的key
+    export OPENAI_BASE_URL=https://你的中转站域名/v1     # 关键：接口地址
+    python3 generate_card_art.py                         # 默认 gpt-image-1
+    python3 generate_card_art.py --model dall-e-3        # 中转站只有 dall-e-3 时
+
+常用参数：
+    --only seals_02        只生成 / 重生成某一张
+    --quality medium       省钱档（gpt-image-1: low/medium/high；dall-e-3: high→hd 其余 standard）
+    --force                覆盖已存在的图
+    --base-url <url>       覆盖 OPENAI_BASE_URL
+    --size 1024x1536       覆盖默认尺寸（一般不用，脚本会按模型自动选）
 
 完成后把图装进图集：
     ../install-card-art.sh ./card_art_out
-
-说明：
-- gpt-image-1 只能出固定尺寸，这里用 1024x1536 生成，再本地居中裁切 + 放大成 5:7 / 1500x2100。
-- 已生成的 PNG 默认跳过，可随时中断后重跑续生成。
-- 失败自动重试 4 次（指数退避）。
 """
 import argparse
 import base64
@@ -25,6 +32,7 @@ import json
 import os
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 try:
@@ -39,12 +47,18 @@ except ImportError:
 HERE = Path(__file__).resolve().parent
 PROMPTS_FILE = HERE / "card_art_prompts.json"
 TARGET_W, TARGET_H = 1500, 2100          # 5:7（仓库 README 规定的画布）
-GEN_SIZE = "1024x1536"                    # gpt-image-1 的纵向尺寸
 TARGET_RATIO = 5 / 7
+
+# 各模型的默认纵向尺寸（脚本随后会本地裁切到 5:7，所以这里只要是竖图即可）
+DEFAULT_SIZE = {
+    "gpt-image-1": "1024x1536",
+    "dall-e-3": "1024x1792",
+    "dall-e-2": "1024x1024",
+}
 
 
 def crop_to_5x7(img: "Image.Image") -> "Image.Image":
-    """居中裁切到 5:7，再高质量放大到 1500x2100。"""
+    """居中裁切到 5:7，再高质量放大到 1500x2100。任意输入尺寸都可。"""
     img = img.convert("RGB")
     w, h = img.size
     if w / h > TARGET_RATIO:              # 太宽 → 裁左右
@@ -58,14 +72,31 @@ def crop_to_5x7(img: "Image.Image") -> "Image.Image":
     return img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
 
-def gen_one(client: "OpenAI", prompt: str, quality: str, model: str) -> bytes:
+def _extract_bytes(resp) -> bytes:
+    """从 images.generate 返回里取出图片字节，兼容 b64_json 与 url 两种形态。"""
+    d = resp.data[0]
+    b64 = getattr(d, "b64_json", None)
+    if b64:
+        return base64.b64decode(b64)
+    url = getattr(d, "url", None)
+    if url:
+        with urllib.request.urlopen(url) as r:   # noqa: S310
+            return r.read()
+    raise RuntimeError("返回里既没有 b64_json 也没有 url")
+
+
+def gen_one(client, prompt, model, size, quality) -> bytes:
+    kwargs = dict(model=model, prompt=prompt, size=size, n=1)
+    if model.startswith("dall-e"):
+        kwargs["response_format"] = "b64_json"        # 让中转站尽量直接回 base64
+        if model == "dall-e-3":
+            kwargs["quality"] = "hd" if quality == "high" else "standard"
+    else:                                             # gpt-image-1 及兼容
+        kwargs["quality"] = quality
     last = None
     for attempt in range(4):
         try:
-            r = client.images.generate(
-                model=model, prompt=prompt, size=GEN_SIZE, quality=quality, n=1
-            )
-            return base64.b64decode(r.data[0].b64_json)
+            return _extract_bytes(client.images.generate(**kwargs))
         except Exception as e:  # noqa: BLE001
             last = e
             wait = 2 ** attempt
@@ -79,14 +110,19 @@ def main() -> None:
     ap.add_argument("--out", default=str(HERE / "card_art_out"), help="输出文件夹")
     ap.add_argument("--quality", default="high", choices=["low", "medium", "high"])
     ap.add_argument("--model", default="gpt-image-1")
+    ap.add_argument("--base-url", default=None, help="中转站接口地址(覆盖 OPENAI_BASE_URL)")
+    ap.add_argument("--size", default=None, help="覆盖默认尺寸，如 1024x1536")
     ap.add_argument("--only", default=None, help="只生成某个 cardId")
     ap.add_argument("--force", action="store_true", help="覆盖已存在的图")
     args = ap.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
-        sys.exit("请先设置：export OPENAI_API_KEY=sk-...")
+        sys.exit("请先设置：export OPENAI_API_KEY=...")
     if not PROMPTS_FILE.exists():
         sys.exit(f"找不到提示词文件：{PROMPTS_FILE}")
+
+    base_url = args.base_url or os.environ.get("OPENAI_BASE_URL")
+    size = args.size or DEFAULT_SIZE.get(args.model, "1024x1536")
 
     cards = json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
     if args.only:
@@ -96,10 +132,12 @@ def main() -> None:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    client = OpenAI()
+    client = OpenAI(base_url=base_url) if base_url else OpenAI()
 
     total, done, skipped, failed = len(cards), 0, 0, []
-    print(f"共 {total} 张  →  {out}   (quality={args.quality}, model={args.model})\n")
+    print(f"共 {total} 张  →  {out}")
+    print(f"模型={args.model}  尺寸={size}  quality={args.quality}  "
+          f"接口={'中转站 ' + base_url if base_url else '官方 OpenAI'}\n")
     for i, c in enumerate(cards, 1):
         cid = c["cardId"]
         dst = out / f"{cid}.png"
@@ -109,7 +147,7 @@ def main() -> None:
             continue
         print(f"[{i}/{total}] {cid}  生成中…", flush=True)
         try:
-            raw = gen_one(client, c["prompt"], args.quality, args.model)
+            raw = gen_one(client, c["prompt"], args.model, size, args.quality)
             crop_to_5x7(Image.open(io.BytesIO(raw))).save(dst, "PNG")
             done += 1
             print(f"        ✓ {dst}")

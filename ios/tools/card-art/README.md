@@ -18,6 +18,16 @@ python3 -m pip install openai pillow
 export OPENAI_API_KEY=sk-你的key
 ```
 
+### 用「中转站 / 自建网关」而非官方 OpenAI
+中转站除了 key，还必须设**接口地址**，并确认它支持出图模型：
+```bash
+export OPENAI_API_KEY=中转站给的key
+export OPENAI_BASE_URL=https://你的中转站域名/v1     # 关键：接口地址，结尾一般是 /v1
+python3 generate_card_art.py                         # 默认走 gpt-image-1
+python3 generate_card_art.py --model dall-e-3        # 中转站只代理 dall-e-3 时
+```
+脚本会自动按模型选尺寸、并兼容返回 b64 或 url 两种形态。**先 `--only lost_paintings_01` 测一张**，确认中转站真的能出图再批量。
+
 ## 生成
 ```bash
 cd ios/tools/card-art
