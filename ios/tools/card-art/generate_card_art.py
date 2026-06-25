@@ -86,23 +86,38 @@ def _extract_bytes(resp) -> bytes:
 
 
 def gen_one(client, prompt, model, size, quality) -> bytes:
-    kwargs = dict(model=model, prompt=prompt, size=size, n=1)
+    base = dict(model=model, prompt=prompt, n=1)
+    opt = {}                                          # 可选参数（中转站不认就逐个去掉）
+    if size:
+        opt["size"] = size
     if model.startswith("dall-e"):
-        kwargs["response_format"] = "b64_json"        # 让中转站尽量直接回 base64
+        opt["response_format"] = "b64_json"           # 让中转站尽量直接回 base64
         if model == "dall-e-3":
-            kwargs["quality"] = "hd" if quality == "high" else "standard"
-    else:                                             # gpt-image-1 及兼容
-        kwargs["quality"] = quality
+            opt["quality"] = "hd" if quality == "high" else "standard"
+    else:                                             # gpt-image-1 / gpt-image-2 等兼容
+        opt["quality"] = quality
+
     last = None
-    for attempt in range(4):
+    for attempt in range(6):
         try:
-            return _extract_bytes(client.images.generate(**kwargs))
+            return _extract_bytes(client.images.generate(**base, **opt))
         except Exception as e:  # noqa: BLE001
+            msg = str(e).lower()
+            # 中转站的这个模型不支持某个参数 → 去掉它，立刻重试（不计退避）
+            bad = any(w in msg for w in ("unsupport", "invalid", "not allowed",
+                                          "unknown", "extra", "unexpected", "param"))
+            if bad:
+                dropped = next((p for p in ("quality", "response_format", "size")
+                                if p in opt and p in msg), None)
+                if dropped:
+                    opt.pop(dropped, None)
+                    print(f"      · 模型不支持参数 {dropped}，去掉后重试", flush=True)
+                    continue
             last = e
             wait = 2 ** attempt
-            print(f"      ! {e}  (第 {attempt + 1}/4 次，{wait}s 后重试)", flush=True)
+            print(f"      ! {e}  (第 {attempt + 1}/6 次，{wait}s 后重试)", flush=True)
             time.sleep(wait)
-    raise RuntimeError(f"重试 4 次仍失败：{last}")
+    raise RuntimeError(f"重试多次仍失败：{last}")
 
 
 def main() -> None:
