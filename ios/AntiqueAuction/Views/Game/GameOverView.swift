@@ -79,7 +79,7 @@ struct GameOverView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(score.playerName)
                     .font(isWinner ? .headline.weight(.heavy) : .headline)
-                    .foregroundStyle(isWinner ? Color.antiqueGold : .primary)
+                    .foregroundStyle(isWinner ? Color.antiqueGold : Color.primary)
                 if isMe {
                     Text("（你）")
                         .font(.caption)
@@ -89,7 +89,7 @@ struct GameOverView: View {
             Spacer()
             Text("\(score.score)")
                 .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(isWinner ? Color.antiqueGold : .primary)
+                .foregroundStyle(isWinner ? Color.antiqueGold : Color.primary)
         }
         .padding()
         .background(

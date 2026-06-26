@@ -42,7 +42,7 @@ struct BillPicker: View {
                         .foregroundStyle(.secondary)
                     Text("\(selectedTotal)")
                         .font(.title3.weight(.bold).monospacedDigit())
-                        .foregroundStyle(isValid ? .primary : .red)
+                        .foregroundStyle(isValid ? Color.primary : Color.red)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

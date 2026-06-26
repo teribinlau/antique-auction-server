@@ -89,7 +89,7 @@ struct GameStatusBar: View {
             // 当前行动玩家（拍卖人）。轮到我时金色 + 呼吸高亮。
             Text(state.isMyTurn ? "轮到你" : "行动：\(state.playerName(for: state.currentPlayerId))")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(state.isMyTurn ? Color.antiqueGold : .secondary)
+                .foregroundStyle(state.isMyTurn ? Color.antiqueGold : Color.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .pulseHighlight(active: state.isMyTurn, color: .antiqueGold, cornerRadius: 8)
