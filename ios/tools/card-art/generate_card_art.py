@@ -52,6 +52,28 @@ def crop_to_5x7(img: "Image.Image") -> "Image.Image":
     return img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
 
+def crop_square(img: "Image.Image", side: int = 1024) -> "Image.Image":
+    """居中裁成正方形并缩放到 side×side（App 图标用，不透明）。"""
+    img = img.convert("RGB")
+    w, h = img.size
+    m = min(w, h)
+    x = (w - m) // 2
+    y = (h - m) // 2
+    return img.crop((x, y, x + m, y + m)).resize((side, side), Image.LANCZOS)
+
+
+ICON_PROMPT = (
+    "App icon for a Chinese antique-auction card game. A bold, iconic, perfectly centered emblem: "
+    "a polished wooden auction gavel crossed over an ancient Chinese treasure (a bronze ding vessel "
+    "or a jade bi-disc), wreathed in subtle traditional cloud-and-dragon ornament, rendered in deep "
+    "lacquer black and rich antique gold with a soft inner glow and a premium, slightly game-like "
+    "sheen. Square 1:1 composition, the emblem fills most of the frame edge to edge on a simple dark "
+    "background, fully opaque, no transparency. Do NOT add rounded corners, a phone mockup, a frame "
+    "or a border. Absolutely NO text, no letters, no numbers, no words, no watermark. Clean, "
+    "balanced, instantly readable as a small app icon."
+)
+
+
 def _scan_str(s: str):
     """从一段文本里找出图片来源：data-uri base64 / 图片直链 / 任意 http 链接。"""
     out = []
@@ -201,6 +223,8 @@ def main() -> None:
     ap.add_argument("--only", default=None, help="只生成某个 cardId")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--debug", action="store_true", help="打印每次原始返回")
+    ap.add_argument("--icon", action="store_true", help="改为生成 App 图标(1024×1024 方形)")
+    ap.add_argument("--icon-count", type=int, default=4, help="出几版图标供挑选(默认4)")
     args = ap.parse_args()
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -211,6 +235,26 @@ def main() -> None:
     base_url = args.base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
     base_url, autov1 = normalize_base(base_url)
     size = args.size or DEFAULT_SIZE.get(args.model, "1024x1536")
+
+    if args.icon:
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        print(f"出 App 图标 ×{args.icon_count}  模型={args.model}  接口={base_url}\n")
+        ok = 0
+        for i in range(1, args.icon_count + 1):
+            dst = out / f"app_icon_{i}.png"
+            print(f"[{i}/{args.icon_count}] {dst.name}  生成中…", flush=True)
+            try:
+                raw = gen_one(api_key, base_url, ICON_PROMPT, args.model, size,
+                              args.quality, args.mode, args.debug)
+                crop_square(Image.open(io.BytesIO(raw)), 1024).save(dst, "PNG")
+                ok += 1
+                print(f"        ✓ {dst}")
+            except Exception as e:  # noqa: BLE001
+                print(f"        ✗ 失败：{e}")
+        print(f"\n出了 {ok} 版图标 → {out}")
+        print("挑一张满意的，拖进 Xcode 的 Assets.xcassets → AppIcon（1024 单格）。")
+        return
 
     cards = json.loads(PROMPTS_FILE.read_text(encoding="utf-8"))
     if args.only:
