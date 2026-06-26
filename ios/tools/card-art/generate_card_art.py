@@ -63,14 +63,16 @@ def crop_square(img: "Image.Image", side: int = 1024) -> "Image.Image":
 
 
 ICON_PROMPT = (
-    "App icon for a Chinese antique-auction card game. A bold, iconic, perfectly centered emblem: "
-    "a polished wooden auction gavel crossed over an ancient Chinese treasure (a bronze ding vessel "
-    "or a jade bi-disc), wreathed in subtle traditional cloud-and-dragon ornament, rendered in deep "
-    "lacquer black and rich antique gold with a soft inner glow and a premium, slightly game-like "
-    "sheen. Square 1:1 composition, the emblem fills most of the frame edge to edge on a simple dark "
-    "background, fully opaque, no transparency. Do NOT add rounded corners, a phone mockup, a frame "
-    "or a border. Absolutely NO text, no letters, no numbers, no words, no watermark. Clean, "
-    "balanced, instantly readable as a small app icon."
+    "A premium 3D app icon in soft glassmorphism style: a small fan of three or four translucent "
+    "frosted-glass cards floating at a gentle angle, made of smooth matte frosted glass with a soft "
+    "gradient from lavender purple to sky blue, subtle translucency and light refraction, gentle "
+    "soft drop shadows and delicate highlights. On the front card a single elegant emblem is gently "
+    "embossed into the glass — a classical antique vase / Chinese treasure silhouette. Clean minimal "
+    "background of very light lavender fading to off-white with a soft glow. Modern Apple-style 3D "
+    "icon aesthetic, soft studio lighting, smoothly rounded card corners, high detail. Square 1:1 "
+    "composition, the card fan centered and filling most of the frame, fully opaque background. Do "
+    "NOT add any text, letters, numbers, words or watermark. Do NOT add an outer rounded-corner "
+    "frame or a phone."
 )
 
 
