@@ -13,7 +13,7 @@ services:
     runtime: node
     plan: free
     branch: main
-    buildCommand: npm install
+    buildCommand: npm install && npm run build:web   # 同时构建 H5 网页版(web/dist)
     startCommand: npm start
-    healthCheckPath: /        # server.js 对 GET / 返回 "ok"，用作健康检查
+    healthCheckPath: /        # 有 H5 时返回页面,无构建产物时返回 JSON,都是 200
     autoDeploy: true          # push 到 main 即自动重新部署

@@ -133,7 +133,7 @@ struct LobbyView: View {
             Spacer()
             Text("\(room.playerCount)/4")
                 .font(.subheadline.monospacedDigit())
-                .foregroundStyle(room.playerCount >= 4 ? .red : .secondary)
+                .foregroundStyle(room.playerCount >= 4 ? Color.red : Color.secondary)
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.tertiary)

@@ -12,8 +12,8 @@ enum Endpoints {
     /// UserDefaults 键；连接页的 `@AppStorage` 与下面的 `serverURL` 共用它。
     static let storageKey = "serverURLString"
 
-    /// 未填写时的占位默认（部署后在 App 里替换成你的真实域名）。
-    static let defaultURLString = "wss://YOUR-APP.onrender.com"
+    /// 未填写时的默认服务器（已指向线上 Render 部署；换服务器在连接页改即可）。
+    static let defaultURLString = "wss://antique-auction-server.onrender.com"
 
     /// 生产环境 WebSocket 地址：实时读取用户在 App 里填写的值，规范化后返回。
     static var serverURL: URL {

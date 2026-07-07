@@ -14,7 +14,7 @@ struct RoomWaitingView: View {
                         ForEach(Array(client.lobbyPlayers.enumerated()), id: \.offset) { idx, name in
                             HStack {
                                 Image(systemName: "person.crop.circle.fill")
-                                    .foregroundStyle(idx == client.myPlayerId ? Color.accentColor : .secondary)
+                                    .foregroundStyle(idx == client.myPlayerId ? Color.accentColor : Color.secondary)
                                 Text(name)
                                     .font(.body)
                                 if idx == client.myPlayerId {
