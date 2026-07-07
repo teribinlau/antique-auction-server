@@ -1,19 +1,71 @@
 const http = require("http");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { WebSocketServer } = require("ws");
 const { GameState } = require("./game_logic");
 
 const PORT = process.env.PORT || 3000;
 
-// 在线版本戳：浏览器访问服务地址（https://你的应用.onrender.com/）即可看到当前部署的 commit，
-// 用于确认服务器跑的是不是最新代码。Render 会注入 RENDER_GIT_COMMIT。
+// 在线版本戳：访问 /version 即可看到当前部署的 commit（Render 注入 RENDER_GIT_COMMIT）。
 const STARTED_AT = new Date().toISOString();
 const GIT_COMMIT = process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "unknown";
 
-const httpServer = http.createServer((req, res) => {
-  // 同时充当 Render 健康检查（返回 200）与版本戳。
+// ── H5 网页版静态托管 ─────────────────────────────────────────
+// web/dist 由 Render 构建时生成（npm run build:web）。同域托管 → 页面里的 wss 自动同源。
+// 没构建产物时（纯后端跑法）退回 JSON 健康响应，行为与旧版一致。
+const WEB_DIST = path.join(__dirname, "web", "dist");
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".webp": "image/webp",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json",
+  ".woff2": "font/woff2",
+};
+
+function sendJSONStatus(res) {
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ status: "ok", commit: GIT_COMMIT, startedAt: STARTED_AT }));
+}
+
+const httpServer = http.createServer((req, res) => {
+  if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end(); return; }
+  let pathname;
+  try { pathname = decodeURIComponent(new URL(req.url, "http://x").pathname); }
+  catch { res.writeHead(400); res.end(); return; }
+
+  if (pathname === "/version") { sendJSONStatus(res); return; }
+
+  // 解析到 web/dist 内的真实文件；目录穿越一律拒绝
+  let filePath = path.normalize(path.join(WEB_DIST, pathname));
+  if (!filePath.startsWith(WEB_DIST)) { res.writeHead(403); res.end(); return; }
+  if (pathname === "/" || !path.extname(filePath)) filePath = path.join(WEB_DIST, "index.html"); // SPA 回退
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // 无构建产物：/ 仍要 200（Render 健康检查）；其余 404
+      if (pathname === "/") { sendJSONStatus(res); return; }
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("not found");
+      return;
+    }
+    const ext = path.extname(filePath);
+    const immutable = pathname.startsWith("/assets/"); // vite 产物带内容哈希
+    res.writeHead(200, {
+      "Content-Type": MIME[ext] || "application/octet-stream",
+      "Cache-Control": immutable ? "public, max-age=31536000, immutable"
+        : pathname.startsWith("/cards/") ? "public, max-age=604800"
+        : "no-cache",
+    });
+    res.end(data);
+  });
 });
 
 const wss = new WebSocketServer({ server: httpServer });
