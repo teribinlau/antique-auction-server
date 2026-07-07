@@ -6,6 +6,7 @@ const { WebSocketServer } = require("ws");
 const { GameState } = require("./game_logic");
 
 const PORT = process.env.PORT || 3000;
+const MAX_PLAYERS = 5; // 房间人数上限(原版 Kuhhandel 支持 3-5 人;逻辑层按 players.length 自适应)
 
 // 在线版本戳：访问 /version 即可看到当前部署的 commit（Render 注入 RENDER_GIT_COMMIT）。
 const STARTED_AT = new Date().toISOString();
@@ -152,7 +153,7 @@ wss.on("connection", (ws) => {
     // ── 大厅列表 ──────────────────────────────────────────
     if (action === "list_rooms") {
       const list = Object.entries(rooms)
-        .filter(([, r]) => !r.game && r.players.length < 4)
+        .filter(([, r]) => !r.game && r.players.length < MAX_PLAYERS)
         .map(([code, r]) => ({
           roomCode: code,
           roomName: r.roomName,
@@ -184,7 +185,7 @@ wss.on("connection", (ws) => {
       const room = rooms[msg.roomCode];
       if (!room) { send(ws, { event: "error", message: "房间不存在" }); return; }
       if (room.game) { send(ws, { event: "error", message: "游戏已开始" }); return; }
-      if (room.players.length >= 4) { send(ws, { event: "error", message: "房间已满" }); return; }
+      if (room.players.length >= MAX_PLAYERS) { send(ws, { event: "error", message: "房间已满" }); return; }
       if (room.password && room.password !== msg.password) { send(ws, { event: "error", message: "密码错误" }); return; }
       ws._roomCode = msg.roomCode;
       ws._playerName = msg.playerName || `玩家${room.players.length + 1}`;

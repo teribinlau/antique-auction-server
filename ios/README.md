@@ -136,7 +136,7 @@ SwiftUI 视图 ──调用便利方法──▶ GameClient.send(ClientAction)
 2. **`opponents[].handCount` = 钞票总张数**（非古董数）：`OpponentBills` 只显示张数、不显示面值——这是诈唬的唯一信息来源。
 3. **`deal_resolved` 两种形态**：`DealResolved` 把 `winnerId` 与 `tieForcedWinner` 都设为可选（`decodeIfPresent`），用 `effectiveWinnerId` / `wasTieFlip` 统一取值。
 4. **`request_state` 仅游戏中有响应**：等待室阶段服务端不回，重连逻辑（`scenePhase == .active`）容忍「无响应＝还在等待室」，不报错。
-5. **`playerId` = 入座下标 0..3**；`money`/`exposedMoney` 的 key 是**字符串面值**，集合固定 `["0","10","50","100","200","500"]`，`"0"` 是废钞（凑张数不值钱，用于诈唬）。`Money = [String:Int]`，逐个写 `CodingKeys`，**未用全局 keyDecodingStrategy**。
+5. **`playerId` = 入座下标 0..4**（房间上限 5 人）；`money`/`exposedMoney` 的 key 是**字符串面值**，集合固定 `["0","10","50","100","200","500"]`，`"0"` 是废钞（凑张数不值钱，用于诈唬）。`Money = [String:Int]`，逐个写 `CodingKeys`，**未用全局 keyDecodingStrategy**。
 
 另外：**「轮到谁出价」不在 `state` 里**，只能靠 `bid_turn` 事件维护——`GameClient.currentBidderId` 专门记录它，并在回合切换 / 离开拍卖阶段时清空。
 

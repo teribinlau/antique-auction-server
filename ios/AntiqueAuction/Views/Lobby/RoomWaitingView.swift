@@ -29,8 +29,8 @@ struct RoomWaitingView: View {
                             }
                             .listRowBackground(Color.white.opacity(0.04))
                         }
-                        // 补足空位提示（最多 4 人）。
-                        ForEach(client.lobbyPlayers.count..<4, id: \.self) { _ in
+                        // 补足空位提示（最多 5 人）。min 防越界:人数已满时区间为空。
+                        ForEach(min(client.lobbyPlayers.count, 5)..<5, id: \.self) { _ in
                             HStack {
                                 Image(systemName: "person.crop.circle.badge.questionmark")
                                     .foregroundStyle(.tertiary)
@@ -42,7 +42,7 @@ struct RoomWaitingView: View {
                             .listRowBackground(Color.clear)
                         }
                     } header: {
-                        Text("玩家 \(client.lobbyPlayers.count)/4")
+                        Text("玩家 \(client.lobbyPlayers.count)/5")
                     } footer: {
                         Text("分享房间码 “\(client.roomCode ?? "")” 邀请好友。至少 2 人即可开始。")
                     }

@@ -122,6 +122,6 @@
 ## 注意事项
 
 1. **money/exposedMoney 的 key 是字符串面值**，固定集合 `["0","10","50","100","200","500"]`，`"0"` 为废钞
-2. **playerId 是入座顺序下标** 0..3
+2. **playerId 是入座顺序下标** 0..4（房间上限 5 人，`server.js` 的 `MAX_PLAYERS`）
 3. **「轮到谁出价」不在 state 里**，只能靠 `bid_turn` 事件维护
 4. **断线重连**：服务器每 30s 发 WebSocket 协议级 PING（客户端由系统自动回 PONG，无需额外代码）。入座 / 重连成功时下发 `reconnectToken`，客户端应持久化（按 roomCode）；游戏进行中掉线服务端**保留座位**（广播 `player_disconnected`），凭 `rejoin_room{roomCode,reconnectToken}` 可绑回原座位（广播 `player_reconnected`）。离开房间或 `game_over` 后客户端应清除已存令牌

@@ -13,7 +13,7 @@ export function ConnectView({ snap }: { snap: Snapshot }) {
       <div className="hero">
         <div className="hero-glyph">🏺</div>
         <h1>古董拍卖</h1>
-        <p className="hero-sub">开拍 · 截拍 · 私盘暗标 —— 2~4 人在线竞拍</p>
+        <p className="hero-sub">开拍 · 截拍 · 私盘暗标 —— 2~5 人在线竞拍</p>
       </div>
       <div className="panel">
         <label className="field">

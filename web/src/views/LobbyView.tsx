@@ -48,7 +48,7 @@ export function LobbyView({ snap }: { snap: Snapshot }) {
               >
                 <span className="roomrow-name">{r.hasPassword ? "🔒 " : ""}{r.roomName}</span>
                 <span className="roomrow-code">{r.roomCode}</span>
-                <span className={`roomrow-count${r.playerCount >= 4 ? " full" : ""}`}>{r.playerCount}/4</span>
+                <span className={`roomrow-count${r.playerCount >= 5 ? " full" : ""}`}>{r.playerCount}/5</span>
               </button>
             ))
           )}
