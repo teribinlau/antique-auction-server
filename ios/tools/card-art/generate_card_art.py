@@ -52,6 +52,32 @@ def crop_to_5x7(img: "Image.Image") -> "Image.Image":
     return img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
 
+def crop_landscape(img: "Image.Image", tw: int = 1920, th: int = 900) -> "Image.Image":
+    """居中裁切成横版(牌桌背景用)并缩放到 tw×th。"""
+    img = img.convert("RGB")
+    w, h = img.size
+    ratio = tw / th
+    if w / h > ratio:
+        nw = int(round(h * ratio)); x = (w - nw) // 2
+        img = img.crop((x, 0, x + nw, h))
+    else:
+        nh = int(round(w / ratio)); y = (h - nh) // 2
+        img = img.crop((0, y, w, y + nh))
+    return img.resize((tw, th), Image.LANCZOS)
+
+
+TABLE_BG_PROMPT = (
+    "A luxurious background texture for an online antique-auction card game table, viewed straight "
+    "from above. Rich dark mahogany and rosewood wood grain surface, a large subtle oval inlay of "
+    "thin antique-gold filigree around the middle, delicate traditional Chinese cloud-pattern "
+    "engravings near the outer edges, warm candlelight glow at the center fading into a deep dark "
+    "vignette at the edges. Muted, elegant, atmospheric, low-key. IMPORTANT: the central area must "
+    "stay clean, dark and low-contrast — game cards and buttons will be overlaid on top. Empty "
+    "table only: no objects, no cards, no hands, no text, no letters, no watermark. Wide landscape "
+    "16:9 composition, full-bleed, fully opaque."
+)
+
+
 def crop_square(img: "Image.Image", side: int = 1024) -> "Image.Image":
     """居中裁成正方形并缩放到 side×side（App 图标用，不透明）。"""
     img = img.convert("RGB")
@@ -227,7 +253,23 @@ def main() -> None:
     ap.add_argument("--debug", action="store_true", help="打印每次原始返回")
     ap.add_argument("--icon", action="store_true", help="改为生成 App 图标(1024×1024 方形)")
     ap.add_argument("--icon-count", type=int, default=4, help="出几版图标供挑选(默认4)")
+    ap.add_argument("--table-bg", action="store_true", help="改为生成牌桌背景候选(1920×900 横版)")
+    ap.add_argument("--table-count", type=int, default=3, help="出几版牌桌背景供挑选(默认3)")
+    ap.add_argument("--use-table-bg", type=int, metavar="N",
+                    help="把第 N 张牌桌背景候选压成 webp 装进 web/public/table_bg.webp")
     args = ap.parse_args()
+
+    # 装载已生成的牌桌背景候选(不联网)
+    if args.use_table_bg is not None:
+        src = HERE / "card_art_out" / f"table_bg_{args.use_table_bg}.png"
+        if not src.exists():
+            sys.exit(f"找不到 {src}(先跑 --table-bg 生成候选)")
+        dst = HERE.parent.parent.parent / "web" / "public" / "table_bg.webp"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        crop_landscape(Image.open(src)).save(dst, "WEBP", quality=80, method=6)
+        print(f"✓ 已装载牌桌背景 → {dst}({dst.stat().st_size // 1024}KB)")
+        print("用 GitHub Desktop 提交 web/public/table_bg.webp 并推送、合并 main 即上线。")
+        return
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -237,6 +279,26 @@ def main() -> None:
     base_url = args.base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
     base_url, autov1 = normalize_base(base_url)
     size = args.size or DEFAULT_SIZE.get(args.model, "1024x1536")
+
+    if args.table_bg:
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        print(f"出牌桌背景 ×{args.table_count}  模型={args.model}  接口={base_url}\n")
+        ok = 0
+        for i in range(1, args.table_count + 1):
+            dst = out / f"table_bg_{i}.png"
+            print(f"[{i}/{args.table_count}] {dst.name}  生成中…", flush=True)
+            try:
+                raw = gen_one(api_key, base_url, TABLE_BG_PROMPT, args.model, size,
+                              args.quality, args.mode, args.debug)
+                crop_landscape(Image.open(io.BytesIO(raw))).save(dst, "PNG")
+                ok += 1
+                print(f"        ✓ {dst}")
+            except Exception as e:  # noqa: BLE001
+                print(f"        ✗ 失败:{e}")
+        print(f"\n出了 {ok} 版牌桌背景 → {out}")
+        print("挑中第 N 张后装载:python3 generate_card_art.py --use-table-bg N")
+        return
 
     if args.icon:
         out = Path(args.out)
