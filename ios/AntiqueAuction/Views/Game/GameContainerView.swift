@@ -81,6 +81,11 @@ struct GameStatusBar: View {
     var body: some View {
         HStack(spacing: 14) {
             statusItem(icon: "flag.fill", text: phaseLabel)
+            // 房号常驻:掉线的朋友可凭「房号+原昵称」输码回座
+            if let code = client.roomCode {
+                statusItem(icon: "key.fill", text: code)
+                    .foregroundStyle(Color.antiqueGold)
+            }
             statusItem(icon: "rectangle.stack.fill", text: "牌堆 \(state.deckSize)")
             if state.silverIngotCount > 0 {
                 statusItem(icon: "dollarsign.circle.fill", text: "白银 \(state.silverIngotCount)")

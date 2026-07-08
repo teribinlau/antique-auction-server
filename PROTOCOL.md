@@ -8,7 +8,7 @@
 |---|---|---|
 | list_rooms | — | 返回 room_list |
 | create_room | roomName?, playerName?, password? | **不会自动入座**，返回 room_created 后需再发 join_room |
-| join_room | roomCode, playerName?, password? | 返回 joined_room（含你的 playerId 与 reconnectToken） |
+| join_room | roomCode, playerName?, password? | 返回 joined_room（含你的 playerId 与 reconnectToken）。**游戏进行中**：若存在「已掉线且昵称相同」的座位，则绑回该座位并返回 rejoined_room（发新令牌，旧令牌作废）——令牌丢失（换设备/清缓存）时凭房号+原昵称回局的兜底通道；否则返回 error「游戏已开始」 |
 | rejoin_room | roomCode, reconnectToken | 断线重连：用令牌把新连接绑回原座位（替代 join_room）。成功返回 rejoined_room，随后自动补发 state_update（及未结束时的 turn_changed）；令牌无效则返回 error |
 | request_state | — | 仅游戏进行中有响应 |
 | start_game | — | ≥2 人可开始 |

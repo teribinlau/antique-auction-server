@@ -153,6 +153,7 @@ input::placeholder { color: rgba(239, 232, 218, 0.35); }
   white-space: nowrap;
 }
 .chip-mini { font-size: 11px; padding: 2px 7px; }
+.chip-code { letter-spacing: 0.1em; color: var(--gold); border: 1px solid var(--gold-dim); cursor: pointer; }
 .chip-gold { background: var(--gold); color: #241c0d; }
 .chip-set { background: rgba(0, 0, 0, 0.45); }
 .chip-complete { background: var(--gold); color: #241c0d; }

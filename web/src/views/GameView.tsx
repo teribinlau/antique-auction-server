@@ -26,6 +26,19 @@ export function GameView({ snap }: { snap: Snapshot }) {
     <div className="page page-game">
       <header className="topbar topbar-game">
         <span className="chip chip-mini">🚩 {PHASE_LABEL[state.phase] ?? state.phase}</span>
+        {snap.roomCode && (
+          <button
+            className="chip chip-mini chip-code"
+            onClick={() => {
+              navigator.clipboard?.writeText(snap.roomCode!).then(
+                () => client.toast(`房号 ${snap.roomCode} 已复制`),
+                () => client.toast(`房号:${snap.roomCode}`),
+              );
+            }}
+          >
+            🔑 {snap.roomCode}
+          </button>
+        )}
         <span className="chip chip-mini">🂠 牌堆 {state.deckSize}</span>
         {state.silverIngotCount > 0 && <span className="chip chip-mini">🥈 白银 {state.silverIngotCount}</span>}
         <span className="topbar-actor">

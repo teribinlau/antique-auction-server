@@ -273,6 +273,9 @@ export class GameClient {
   requestState() { this.send({ action: "request_state" }); }
 
   // ── 横幅 ─────────────────────────────────────────────────
+  /** 供视图层弹一条提示(如「房号已复制」) */
+  toast(text: string) { this.banner("info", text); }
+
   private banner(kind: BannerMsg["kind"], text: string) {
     const b: BannerMsg = { id: bannerSeq++, kind, text };
     const banners = [...this.snap.banners, b].slice(-3);

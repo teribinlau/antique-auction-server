@@ -202,9 +202,31 @@ wss.on("connection", (ws) => {
     if (action === "join_room") {
       const room = rooms[msg.roomCode];
       if (!room) { send(ws, { event: "error", message: "房间不存在" }); return; }
-      if (room.game) { send(ws, { event: "error", message: "游戏已开始" }); return; }
-      if (room.players.length >= MAX_PLAYERS) { send(ws, { event: "error", message: "房间已满" }); return; }
       if (room.password && room.password !== msg.password) { send(ws, { event: "error", message: "密码错误" }); return; }
+      if (room.game) {
+        // 游戏进行中:凭「房号 + 原昵称」绑回掉线座位——令牌丢失(换设备/清缓存)的兜底通道
+        const seat = room.game.phase !== "GAME_OVER"
+          ? room.players.find(p => !p.connected && p.playerName === (msg.playerName || ""))
+          : null;
+        if (!seat) { send(ws, { event: "error", message: "游戏已开始" }); return; }
+        clearTimeout(room.emptyTimer);
+        room.emptyTimer = null;
+        seat.ws = ws;
+        seat.connected = true;
+        seat.reconnectToken = genToken(); // 发新令牌,旧设备的令牌随之作废
+        ws._roomCode = msg.roomCode;
+        ws._playerId = seat.playerId;
+        ws._playerName = seat.playerName;
+        ws.isAlive = true;
+        send(ws, { event: "rejoined_room", roomCode: msg.roomCode, roomName: room.roomName, playerId: seat.playerId, playerCount: room.players.length, players: room.players.map(p => p.playerName), reconnectToken: seat.reconnectToken });
+        broadcast(room, { event: "player_reconnected", playerName: seat.playerName, playerId: seat.playerId });
+        send(ws, { event: "state_update", state: room.game.getViewFor(seat.playerId) });
+        send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
+        ensureActionableActor(room);
+        autoResolveDisconnectedBids(room);
+        return;
+      }
+      if (room.players.length >= MAX_PLAYERS) { send(ws, { event: "error", message: "房间已满" }); return; }
       ws._roomCode = msg.roomCode;
       ws._playerName = msg.playerName || `玩家${room.players.length + 1}`;
       const playerId = room.players.length;
