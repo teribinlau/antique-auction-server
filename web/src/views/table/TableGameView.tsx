@@ -63,6 +63,8 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
   const portrait = h > w;
   const [preview, setPreview] = useState<Card | null>(null);
   const [picked, setPicked] = useState<Money>({});
+  // 私盘目标弹窗在根节点渲染:舞台/手牌各自是 stacking context,嵌在舞台里会被手牌区压住
+  const [showTargets, setShowTargets] = useState(false);
 
   const me = state.me.playerId;
   const myTurn = state.currentPlayerId === me;
@@ -170,7 +172,12 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
       </div>
 
       {/* 中央舞台 */}
-      <CenterStage snap={snap} picked={picked} onClearPicked={() => setPicked({})} />
+      <CenterStage
+        snap={snap}
+        picked={picked}
+        onClearPicked={() => setPicked({})}
+        onOpenTargets={() => { client.getDealTargets(); setShowTargets(true); }}
+      />
 
       {/* 我的区域:古董手牌 + 资金手牌 */}
       <div className="t-mine">
@@ -189,6 +196,9 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
         <AntiqueFan state={state} onPreview={setPreview} />
         <MoneyFan money={state.me.money} picked={picked} selecting={selecting} onToggle={toggleBill} />
       </div>
+
+      {/* 私盘目标选择 */}
+      {showTargets && <TargetSheet snap={snap} onClose={() => setShowTargets(false)} />}
 
       {/* 大图预览 */}
       {preview && (
@@ -261,8 +271,8 @@ function ChatLog({ log }: { log: BannerMsg[] }) {
 }
 
 // ── 中央舞台(按阶段) ────────────────────────────────────────
-function CenterStage({ snap, picked, onClearPicked }: {
-  snap: Snapshot; picked: Money; onClearPicked: () => void;
+function CenterStage({ snap, picked, onClearPicked, onOpenTargets }: {
+  snap: Snapshot; picked: Money; onClearPicked: () => void; onOpenTargets: () => void;
 }) {
   const state = snap.state!;
   const me = state.me.playerId;
@@ -271,7 +281,11 @@ function CenterStage({ snap, picked, onClearPicked }: {
   const minBid = state.highestBid + 10;
   const [amount, setAmount] = useState(minBid);
   useEffect(() => { setAmount(state.highestBid + 10); }, [state.highestBid, card?.cardId]);
-  const [showTargets, setShowTargets] = useState(false);
+  // 我盖到桌面那叠的总额(只有自己知道;换私盘/离开私盘阶段清空)
+  const [lastStake, setLastStake] = useState<number | null>(null);
+  useEffect(() => {
+    if (state.phase !== "PRIVATE_DEAL") setLastStake(null);
+  }, [state.phase, state.dealInitiator, state.dealSetId]);
 
   // 结算
   if (state.phase === "GAME_OVER") {
@@ -293,7 +307,7 @@ function CenterStage({ snap, picked, onClearPicked }: {
     );
   }
 
-  // 私盘
+  // 私盘(押注像出牌:盖着打到桌面)
   if (state.phase === "PRIVATE_DEAL") {
     const st = styleFor(state.dealSetId);
     const iAmInitiator = me === state.dealInitiator;
@@ -307,27 +321,39 @@ function CenterStage({ snap, picked, onClearPicked }: {
     let body: JSX.Element;
     if (!iAmInitiator && !iAmTarget) {
       body = <p className="t-wait">{nameOf(state, state.dealInitiator)} ⇄ {nameOf(state, state.dealTarget)}
-        「{st.name}」私盘中…{iniSubmitted ? `发起人已押 ${count ?? "?"} 张` : "等发起人押注"}</p>;
+        「{st.name}」私盘中…{iniSubmitted ? "等对方还价" : "等发起人押注"}</p>;
     } else if (mySubmitted) {
-      body = <p className="t-wait">已提交,等待 {nameOf(state, other)}…</p>;
+      body = <p className="t-wait">已{iAmInitiator ? "押注" : "提交"},等待 {nameOf(state, other)}…</p>;
     } else if (iAmTarget && !iniSubmitted) {
       body = <p className="t-wait">等待 {nameOf(state, other)} 先押注…</p>;
     } else {
       body = (
         <>
-          {iAmTarget && (
-            <p className="t-reveal">{nameOf(state, other)} 押了 <b>{count ?? 0} 张</b>(金额保密)</p>
-          )}
-          <p className="t-hint">👇 点下方钞票牌选择{iAmInitiator ? "押注" : "还价"}——报价高者赢「{st.name}」;废钞可凑张数虚张声势</p>
+          <p className="t-hint">
+            👇 点下方钞票牌选中,{iAmInitiator ? "像出牌一样盖着押到桌面(对方只见张数)" : "盖着还到桌面(对方看不到)"}
+            ——报价高者赢「{st.name}」;废钞可凑张数虚张声势
+          </p>
           <div className="t-btnrow">
-            <button className="btn btn-primary" onClick={() => { client.submitOffer(picked); onClearPicked(); }}>
-              🤝 {iAmInitiator ? "押注" : "提交暗标"}({moneyTotal(picked)}·{moneyCount(picked)}张)
+            <button className="btn btn-primary"
+              onClick={() => { setLastStake(moneyTotal(picked)); client.submitOffer(picked); onClearPicked(); }}>
+              🂠 {iAmInitiator ? "盖牌押注" : "盖牌还价"}({moneyTotal(picked)}·{moneyCount(picked)}张)
             </button>
           </div>
         </>
       );
     }
-    return <div className="t-stage"><div className="t-panel"><h3 className="t-title">私盘 ·「{st.name}」</h3>{body}</div></div>;
+    return (
+      <div className="t-stage t-stage-row">
+        {iniSubmitted && (
+          <StakePile
+            count={count ?? 0}
+            label={`${nameOf(state, state.dealInitiator)} 的押注`}
+            sub={iAmInitiator && lastStake !== null ? `共 ${lastStake}(只有你知道)` : "面值保密"}
+          />
+        )}
+        <div className="t-panel"><h3 className="t-title">私盘 ·「{st.name}」</h3>{body}</div>
+      </div>
+    );
   }
 
   // 截拍
@@ -373,34 +399,12 @@ function CenterStage({ snap, picked, onClearPicked }: {
             {!endgame && (
               <button className="btn btn-primary" onClick={() => client.startAuction()}>🔨 开拍下一张</button>
             )}
-            <button className={`btn ${endgame ? "btn-primary" : "btn-gold"}`}
-              onClick={() => { client.getDealTargets(); setShowTargets(true); }}>
+            <button className={`btn ${endgame ? "btn-primary" : "btn-gold"}`} onClick={onOpenTargets}>
               ⇄ 发起私盘
             </button>
           </div>
           {endgame && <p className="t-hint">牌堆已空:私盘打到无人可交易,游戏才结束</p>}
         </div>
-        {showTargets && (
-          <div className="sheet-mask" onClick={() => setShowTargets(false)}>
-            <div className="sheet" onClick={(e) => e.stopPropagation()}>
-              <h3>发起私盘</h3>
-              {snap.dealTargets.length === 0
-                ? <p className="hint">你和对手没有相同套系的古董可换。</p>
-                : snap.dealTargets.map((t) => {
-                    const st = styleFor(t.setId);
-                    return (
-                      <button key={`${t.setId}-${t.targetId}`} className="roomrow"
-                        onClick={() => { client.startDeal(t.targetId, t.setId); setShowTargets(false); }}>
-                        <span className="setchip" style={{ background: st.primary }}><b>{st.glyph}</b> {st.name}</span>
-                        <span className="roomrow-name">对手:{nameOf(state, t.targetId)}</span>
-                        <span className="roomrow-count">可换 {t.tradeCount} 张</span>
-                      </button>
-                    );
-                  })}
-              <button className="btn btn-ghost" onClick={() => setShowTargets(false)}>取消</button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -439,6 +443,61 @@ function CenterStage({ snap, picked, onClearPicked }: {
                 : "等待竞价推进…"}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── 私盘目标选择(根节点弹层,避免被手牌区压住) ────────────────
+function TargetSheet({ snap, onClose }: { snap: Snapshot; onClose: () => void }) {
+  const state = snap.state!;
+  return (
+    <div className="sheet-mask" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <h3>发起私盘</h3>
+        {snap.dealTargets.length === 0
+          ? <p className="hint">你和对手没有相同套系的古董可换。</p>
+          : snap.dealTargets.map((t) => {
+              const st = styleFor(t.setId);
+              return (
+                <button key={`${t.setId}-${t.targetId}`} className="roomrow"
+                  onClick={() => { client.startDeal(t.targetId, t.setId); onClose(); }}>
+                  <span className="setchip" style={{ background: st.primary }}><b>{st.glyph}</b> {st.name}</span>
+                  <span className="roomrow-name">对手:{nameOf(state, t.targetId)}</span>
+                  <span className="roomrow-count">可换 {t.tradeCount} 张</span>
+                </button>
+              );
+            })}
+        <button className="btn btn-ghost" onClick={onClose}>取消</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 桌面上盖着的押注牌堆(私盘) ──────────────────────────────
+function StakePile({ count, label, sub }: { count: number; label: string; sub?: string }) {
+  const shown = Math.min(count, 14); // 视觉上限,超出叠得更密也够意思了
+  const step = shown > 8 ? 10 : 15;
+  return (
+    <div className="t-stake">
+      <div className="t-stake-pile" style={{ width: 48 + step * Math.max(0, shown - 1) }}>
+        {Array.from({ length: shown }).map((_, i) => (
+          <span
+            key={i}
+            className="t-stake-card"
+            style={{
+              left: i * step,
+              zIndex: i,
+              transform: `rotate(${((i * 7) % 5) - 2}deg)`,
+              animationDelay: `${i * 45}ms`,
+            }}
+          >押</span>
+        ))}
+        {count === 0 && <span className="t-stake-none">空手押注!</span>}
+      </div>
+      <div className="t-stake-label">
+        {label} · <b>{count} 张</b>
+        {sub && <em>{sub}</em>}
       </div>
     </div>
   );
