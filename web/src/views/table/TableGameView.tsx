@@ -12,7 +12,7 @@ import {
 } from "../../protocol";
 import { GOLD, RARITY_ACCENT, cardArtUrl, cardRarity, isElevated, styleFor } from "../../theme";
 import { CardView } from "../../components/CardView";
-import { BannerStack } from "../../components/Banner";
+import type { BannerMsg } from "../../client";
 
 const PHASE_LABEL: Record<string, string> = {
   AUCTION: "拍卖", SNIPE: "截拍", PRIVATE_DEAL: "私盘", GAME_OVER: "结算", WAITING: "等待",
@@ -111,7 +111,7 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
 
   return (
     <div className={`table-root${portrait ? " table-rotated" : ""}`} style={rootStyle}>
-      <BannerStack banners={snap.banners} />
+      <ChatLog log={snap.log} />
 
       {/* 顶栏 */}
       <header className="t-top">
@@ -207,6 +207,56 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ── 消息聊天框:半透明常驻最近几条,点开回看完整历史 ──────────
+function ChatLog({ log }: { log: BannerMsg[] }) {
+  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const recent = log.slice(-3);
+
+  // 展开时/新消息时滚到底
+  useEffect(() => {
+    if (open && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [open, log.length]);
+
+  const hhmm = (ts: number) => {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  if (open) {
+    return (
+      <div className="t-chat t-chat-open">
+        <div className="t-chat-head">
+          <span>对局消息({log.length})</span>
+          <button className="t-chat-close" onClick={() => setOpen(false)}>收起 ✕</button>
+        </div>
+        <div className="t-chat-list" ref={listRef}>
+          {log.length === 0 && <p className="t-chat-empty">暂无消息</p>}
+          {log.map((m) => (
+            <p key={m.id} className={`t-chat-line t-chat-${m.kind}`}>
+              <em>{hhmm(m.ts)}</em> {m.text}
+            </p>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <button className="t-chat" onClick={() => setOpen(true)} title="点开查看全部消息">
+      {recent.length === 0 ? (
+        <p className="t-chat-line t-chat-empty">💬 对局消息</p>
+      ) : (
+        recent.map((m, i) => (
+          <p key={m.id} className={`t-chat-line t-chat-${m.kind}`} style={{ opacity: 0.55 + 0.225 * i }}>
+            {m.text}
+          </p>
+        ))
+      )}
+      <span className="t-chat-more">💬 {log.length > 3 ? `+${log.length - 3} 条历史` : "点开回看"}</span>
+    </button>
   );
 }
 

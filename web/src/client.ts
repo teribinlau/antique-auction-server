@@ -21,6 +21,8 @@ export interface BannerMsg {
   id: number;
   kind: "info" | "gold" | "error" | "win";
   text: string;
+  /** 消息时间戳(ms),日志面板显示 HH:MM 用 */
+  ts: number;
 }
 
 /** 界面风格:classic=竖屏经典版;table=横屏牌桌版(斗地主式) */
@@ -45,6 +47,8 @@ export interface Snapshot {
   dealSubmittedByMe: boolean;
   gameOverScores: Score[] | null;
   banners: BannerMsg[];
+  /** 本房间的完整提示历史(聊天框回看用;换房间时重置) */
+  log: BannerMsg[];
   /** 游戏中掉线的玩家 id（player_disconnected/reconnected 维护） */
   disconnectedIds: number[];
 }
@@ -112,6 +116,7 @@ export class GameClient {
       dealSubmittedByMe: false,
       gameOverScores: null,
       banners: [],
+      log: [],
       disconnectedIds: [],
     };
     // 回到前台:探活/重连。微信/手机浏览器常把后台页面冻结——socket 可能已死但 close 迟迟不来。
@@ -289,9 +294,10 @@ export class GameClient {
   }
 
   private banner(kind: BannerMsg["kind"], text: string) {
-    const b: BannerMsg = { id: bannerSeq++, kind, text };
+    const b: BannerMsg = { id: bannerSeq++, kind, text, ts: Date.now() };
     const banners = [...this.snap.banners, b].slice(-3);
-    this.patch({ banners });
+    const log = [...this.snap.log, b].slice(-150); // 日志留最近 150 条,牌桌聊天框回看
+    this.patch({ banners, log });
     window.setTimeout(() => {
       this.patch({ banners: this.snap.banners.filter((x) => x.id !== b.id) });
     }, 4200);
@@ -339,6 +345,8 @@ export class GameClient {
           myPlayerId: Number(ev.playerId),
           waitingPlayers: (ev.players as string[]) ?? [],
           gameOverScores: null,
+          // 新入座 = 新对局上下文,清空日志;重连(rejoined)保留本页已有历史
+          ...(ev.event === "joined_room" ? { log: [] } : null),
         });
         if (ev.event === "rejoined_room") {
           this.banner("info", "已重连回原座位");
