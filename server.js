@@ -109,6 +109,17 @@ function dispatchEvents(room, events) {
   broadcastState(room);
 }
 
+// 补发「不在 state 里的瞬时事件」给重连/请求状态的连接:
+// bid_turn(轮到谁出价)与 snipe_prompt(截拍抉择)只以事件形式存在——
+// 不补发的话,重连回来的出价人不知道轮到自己,全桌互等卡死。
+function sendTransientPhaseEvents(ws, game) {
+  if (game.phase === "AUCTION" && game.auctionCard && game.bidTurnId !== undefined && game.bidTurnId !== -1) {
+    send(ws, { event: "bid_turn", playerId: game.bidTurnId, auctionerId: game.currentPlayer().playerId, highestBid: game.highestBid });
+  } else if (game.phase === "SNIPE" && game.auctionCard) {
+    send(ws, { event: "snipe_prompt", card: game.auctionCard, highestBid: game.highestBid, highestBidder: game.highestBidder, auctionerId: game.currentPlayer().playerId });
+  }
+}
+
 // 当前行动玩家掉线时,把回合推进到下一个在线玩家,避免全桌等一个回不来的人。
 // close(掉线)与 rejoin_room(重连回来发现行动者还离线)两处共用。
 function ensureActionableActor(room) {
@@ -222,6 +233,7 @@ wss.on("connection", (ws) => {
         broadcast(room, { event: "player_reconnected", playerName: seat.playerName, playerId: seat.playerId });
         send(ws, { event: "state_update", state: room.game.getViewFor(seat.playerId) });
         send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
+        sendTransientPhaseEvents(ws, room.game);
         ensureActionableActor(room);
         autoResolveDisconnectedBids(room);
         return;
@@ -262,6 +274,7 @@ wss.on("connection", (ws) => {
         if (room.game.phase !== "GAME_OVER") {
           send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
         }
+        sendTransientPhaseEvents(ws, room.game); // 竞价/截拍中:补发 bid_turn / snipe_prompt
         // 若当前行动者/出价者仍离线(如全员掉线后第一个回来的人),推进到在线玩家,别让他干等
         ensureActionableActor(room);
         autoResolveDisconnectedBids(room);
@@ -279,6 +292,7 @@ wss.on("connection", (ws) => {
         if (room.game.phase !== "GAME_OVER") {
           send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
         }
+        sendTransientPhaseEvents(ws, room.game); // 竞价/截拍中:补发 bid_turn / snipe_prompt
       }
       return;
     }
