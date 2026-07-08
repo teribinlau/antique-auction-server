@@ -17,7 +17,7 @@
 | pass_bid | — | 同上 |
 | action_snipe | doSnipe(Bool), paid?({面值:张数}) | 仅 SNIPE 且你是拍卖人；doSnipe=true 时 paid 总额须≥highestBid |
 | start_private_deal | targetId(Int), setId(String) | 仅当前回合玩家 |
-| submit_deal_offer | paid({面值:张数}) | 发起人与目标各提交一次 |
+| submit_deal_offer | paid({面值:张数}) | **顺序制**：发起人必须先押注（目标先提交会返回 error「请等发起人先出价」）；发起人押注后其【张数】公开（state.dealOfferBillCount 与 deal_offer_submitted.offerCount），目标再暗标。各方提交后不可改 |
 | get_deal_targets | — | 返回 deal_targets |
 
 ## 服务端 → 客户端（event）
@@ -47,7 +47,7 @@
 | snipe_declined | winnerId（=出价者，拍卖人放手） |
 | payment_failed | playerId, exposedMoney({String:Int}), card, currentPlayerId（付款失败=该牌流拍，随后会有 turn_changed） |
 | private_deal_started | initiatorId, targetId, setId |
-| deal_offer_submitted | targetId, initiatorId, offerCount, setId |
+| deal_offer_submitted | targetId, initiatorId, offerCount(发起人押注的**张数**，金额保密), setId（仅发起人押注时广播；目标提交即刻进入结算） |
 | deal_tie | tieCount, initiatorId, targetId, setId |
 | deal_resolved | 普通：{winnerId,loserId,tradeCount,offerTotal,counterTotal,initiatorId}；连平掷币：{tieForcedWinner,loserId,setId,tradeCount,offerTotal,counterTotal,initiatorId} |
 | deal_targets | targets:[{setId,targetId,tradeCount}] |
@@ -115,9 +115,14 @@
   "highestBidder": 1,
   "dealInitiator": -1,
   "dealTarget": -1,
-  "dealSetId": ""
+  "dealSetId": "",
+  "dealInitiatorSubmitted": false,
+  "dealTargetSubmitted": false,
+  "dealOfferBillCount": null
 }
 ```
+
+> 私盘顺序流：`dealInitiatorSubmitted` 为 true 后，`dealOfferBillCount` = 发起人押注的**张数**（金额保密，废钞与大钞不可区分——这正是诈唬空间）；目标据此暗标。平局重标时三个字段一并复位。
 
 ## 注意事项
 

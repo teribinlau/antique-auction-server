@@ -284,6 +284,18 @@ input::placeholder { color: rgba(239, 232, 218, 0.35); }
 }
 @keyframes rot { to { transform: rotate(360deg); } }
 
+/* ── 私盘亮张数 ── */
+.deal-reveal {
+  text-align: center;
+  background: rgba(212, 169, 87, 0.12);
+  border: 1px solid var(--gold-dim);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 15px;
+}
+.deal-reveal b { color: var(--gold); font-size: 22px; font-variant-numeric: tabular-nums; }
+.deal-reveal-sub { display: block; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
 /* ── 选钞器 ── */
 .billpicker {
   background: rgba(0, 0, 0, 0.25);

@@ -411,19 +411,24 @@ class GameState {
 
   submitDealOffer(playerId, paid) {
     if (this.phase !== "PRIVATE_DEAL") return { error: "不在私盘阶段" };
+    // 顺序规则（对齐原版牛市交易）：发起人先押注 → 目标看到其【张数】（金额保密）再暗标。
+    // 废钞由此才有虚张声势的价值。已提交后不可改（张数已亮出）。
     if (playerId === this.dealInitiator) {
+      if (this.dealInitiatorSubmitted) return { error: "你已提交过报价" };
       this.dealOffer = paid;
       this.dealInitiatorSubmitted = true;
     } else if (playerId === this.dealTarget) {
+      if (!this.dealInitiatorSubmitted) return { error: "请等发起人先出价" };
+      if (this.dealTargetSubmitted) return { error: "你已提交过报价" };
       this.dealCounter = paid;
       this.dealTargetSubmitted = true;
     } else {
       return { error: "你不在这个私盘中" };
     }
-    // 双方都暗标完成才结算（与提交先后无关，避免一方先交就用空报价提前结算）。
     if (this.dealInitiatorSubmitted && this.dealTargetSubmitted) {
       return this._resolvePrivateDeal();
     }
+    // 走到这里必然是发起人刚押注：向全桌亮出【张数】（金额保密），目标据此暗标。
     const offerCount = Object.values(paid).reduce((s, c) => s + c, 0);
     return { event: "deal_offer_submitted", targetId: this.dealTarget, initiatorId: this.dealInitiator, offerCount, setId: this.dealSetId };
   }
@@ -521,6 +526,12 @@ class GameState {
       dealInitiator: this.dealInitiator,
       dealTarget: this.dealTarget,
       dealSetId: this.dealSetId,
+      dealInitiatorSubmitted: this.dealInitiatorSubmitted,
+      dealTargetSubmitted: this.dealTargetSubmitted,
+      // 发起人押注的【张数】（金额保密）——目标暗标前的唯一公开信息；未押注时为 null。
+      dealOfferBillCount: this.dealInitiatorSubmitted
+        ? Object.values(this.dealOffer).reduce((s, c) => s + c, 0)
+        : null,
     };
   }
 

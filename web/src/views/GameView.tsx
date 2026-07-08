@@ -241,45 +241,87 @@ function SnipePanel({ snap }: { snap: Snapshot }) {
   );
 }
 
-// ── 私盘阶段 ────────────────────────────────────────────────
+// ── 私盘阶段(顺序流:发起人先押注 → 目标看到张数再暗标) ──────
 function DealPanel({ snap }: { snap: Snapshot }) {
   const state = snap.state!;
   const me = state.me.playerId;
-  const involved = me === state.dealInitiator || me === state.dealTarget;
-  const other = me === state.dealInitiator ? state.dealTarget : state.dealInitiator;
+  const iAmInitiator = me === state.dealInitiator;
+  const iAmTarget = me === state.dealTarget;
+  const other = iAmInitiator ? state.dealTarget : state.dealInitiator;
   const st = styleFor(state.dealSetId);
   const [paid, setPaid] = useState<Money>({});
+  const iniSubmitted = !!state.dealInitiatorSubmitted;
+  const meSubmitted = snap.dealSubmittedByMe || (iAmInitiator ? iniSubmitted : !!state.dealTargetSubmitted);
+  const billCount = state.dealOfferBillCount;
 
-  if (!involved) {
+  // 围观者:显示进度
+  if (!iAmInitiator && !iAmTarget) {
     return (
       <section className="sect mainpanel">
         <div className="waiting">
           <div className="spin" />
           <p>
             {nameOf(state, state.dealInitiator)} 与 {nameOf(state, state.dealTarget)} 正在
-            「{st.name}」私盘暗标中…
+            「{st.name}」私盘中…
+            {iniSubmitted
+              ? `发起人已押 ${billCount ?? "?"} 张,等对方暗标`
+              : "等发起人押注"}
           </p>
         </div>
       </section>
     );
   }
-  if (snap.dealSubmittedByMe) {
+
+  // 我已提交 → 等待
+  if (meSubmitted) {
     return (
       <section className="sect mainpanel">
-        <div className="waiting"><div className="spin" /><p>已提交暗标,等待 {nameOf(state, other)}…</p></div>
+        <div className="waiting">
+          <div className="spin" />
+          <p>
+            {iAmInitiator && billCount != null && <>你已押 {billCount} 张(对方只看得到张数)。</>}
+            等待 {nameOf(state, other)}…
+          </p>
+        </div>
       </section>
     );
   }
+
+  // 目标方:发起人还没押 → 等
+  if (iAmTarget && !iniSubmitted) {
+    return (
+      <section className="sect mainpanel">
+        <div className="waiting"><div className="spin" /><p>等待 {nameOf(state, other)} 先押注…</p></div>
+      </section>
+    );
+  }
+
+  // 轮到我报价(发起人先手 / 目标看到张数后还价)
   return (
     <section className="sect mainpanel actionbox">
       <h2 className="gold-title">私盘暗标 ·「{st.name}」</h2>
+      {iAmTarget && (
+        <div className="deal-reveal">
+          {nameOf(state, other)} 押了 <b>{billCount ?? 0} 张</b>钞票
+          <span className="deal-reveal-sub">金额保密——可能全是废钞,也可能都是大钞</span>
+        </div>
+      )}
       <p className="hint">
-        与 {nameOf(state, other)} 互换「{st.name}」:双方各自暗中报价,<b>报价高者赢得对方的牌</b>,
-        双方按各自报价互付金钱。报价对对方保密——废钞可凑张数虚张声势。
+        {iAmInitiator ? (
+          <>
+            你先押注,对方将看到你的<b>张数</b>(看不到金额)后再暗标。
+            <b>报价高者赢得对方的「{st.name}」</b>,双方按各自报价互付金钱。废钞可凑张数虚张声势。
+          </>
+        ) : (
+          <>
+            暗中还价:<b>报价高者赢得对方的「{st.name}」</b>,双方按各自报价互付金钱。
+            你的报价对方看不到。
+          </>
+        )}
       </p>
       <BillPicker owned={state.me.money} picked={paid} onChange={setPaid} />
       <button className="btn btn-primary btn-big" onClick={() => client.submitOffer(paid)}>
-        🤝 提交暗标({moneyTotal(paid)} / {moneyCount(paid)} 张)
+        🤝 {iAmInitiator ? "押注" : "提交暗标"}({moneyTotal(paid)} / {moneyCount(paid)} 张)
       </button>
     </section>
   );

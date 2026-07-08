@@ -74,6 +74,11 @@ struct GameView: Codable, Equatable {
     let dealTarget: Int
     /// "" 表示无私盘套系。
     let dealSetId: String
+    /// 私盘顺序流：发起人是否已押注 / 目标是否已暗标。
+    let dealInitiatorSubmitted: Bool
+    let dealTargetSubmitted: Bool
+    /// 发起人押注的【张数】（金额保密）；未押注时为 nil。目标据此决定还价。
+    let dealOfferBillCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case myId
@@ -89,6 +94,9 @@ struct GameView: Codable, Equatable {
         case dealInitiator
         case dealTarget
         case dealSetId
+        case dealInitiatorSubmitted
+        case dealTargetSubmitted
+        case dealOfferBillCount
     }
 
     init(from decoder: Decoder) throws {
@@ -109,13 +117,18 @@ struct GameView: Codable, Equatable {
         dealInitiator = try c.decodeIfPresent(Int.self, forKey: .dealInitiator) ?? -1
         dealTarget = try c.decodeIfPresent(Int.self, forKey: .dealTarget) ?? -1
         dealSetId = try c.decodeIfPresent(String.self, forKey: .dealSetId) ?? ""
+        dealInitiatorSubmitted = try c.decodeIfPresent(Bool.self, forKey: .dealInitiatorSubmitted) ?? false
+        dealTargetSubmitted = try c.decodeIfPresent(Bool.self, forKey: .dealTargetSubmitted) ?? false
+        dealOfferBillCount = try c.decodeIfPresent(Int.self, forKey: .dealOfferBillCount)
     }
 
     /// 便于在视图/预览里手工构造（非 decode 路径）。
     init(myId: Int, phase: Phase, currentPlayerId: Int, deckSize: Int,
          silverIngotCount: Int, me: MePlayer, opponents: [Opponent],
          auctionCard: Card?, highestBid: Int, highestBidder: Int,
-         dealInitiator: Int, dealTarget: Int, dealSetId: String) {
+         dealInitiator: Int, dealTarget: Int, dealSetId: String,
+         dealInitiatorSubmitted: Bool = false, dealTargetSubmitted: Bool = false,
+         dealOfferBillCount: Int? = nil) {
         self.myId = myId
         self.phase = phase
         self.currentPlayerId = currentPlayerId
@@ -129,6 +142,9 @@ struct GameView: Codable, Equatable {
         self.dealInitiator = dealInitiator
         self.dealTarget = dealTarget
         self.dealSetId = dealSetId
+        self.dealInitiatorSubmitted = dealInitiatorSubmitted
+        self.dealTargetSubmitted = dealTargetSubmitted
+        self.dealOfferBillCount = dealOfferBillCount
     }
 
     func encode(to encoder: Encoder) throws {
@@ -146,6 +162,9 @@ struct GameView: Codable, Equatable {
         try c.encode(dealInitiator, forKey: .dealInitiator)
         try c.encode(dealTarget, forKey: .dealTarget)
         try c.encode(dealSetId, forKey: .dealSetId)
+        try c.encode(dealInitiatorSubmitted, forKey: .dealInitiatorSubmitted)
+        try c.encode(dealTargetSubmitted, forKey: .dealTargetSubmitted)
+        try c.encodeIfPresent(dealOfferBillCount, forKey: .dealOfferBillCount)
     }
 
     // ── 便利计算属性（供视图使用） ──────────────────────────

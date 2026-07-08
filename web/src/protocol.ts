@@ -55,6 +55,11 @@ export interface GameStateView {
   dealInitiator: number;
   dealTarget: number;
   dealSetId: string;
+  /** 私盘顺序流:发起人是否已押注 / 目标是否已暗标 */
+  dealInitiatorSubmitted?: boolean;
+  dealTargetSubmitted?: boolean;
+  /** 发起人押注的张数(金额保密);发起人未押注时为 null */
+  dealOfferBillCount?: number | null;
 }
 
 export interface RoomSummary {
