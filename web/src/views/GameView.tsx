@@ -111,15 +111,22 @@ function AuctionPanel({ snap }: { snap: Snapshot }) {
         </section>
       );
     }
+    const endgame = state.deckSize === 0;
     return (
       <section className="sect mainpanel actionbox">
-        <h2 className="gold-title">轮到你了·请选择行动</h2>
-        <p className="hint">开拍一张新古董,或与持有相同套系的对手发起私盘。</p>
-        <button className="btn btn-primary btn-big" disabled={state.deckSize === 0} onClick={() => client.startAuction()}>
-          🔨 开拍下一张
-        </button>
+        <h2 className="gold-title">{endgame ? "私盘决胜·轮到你" : "轮到你了·请选择行动"}</h2>
+        <p className="hint">
+          {endgame
+            ? "牌堆已空:与持有相同套系的对手发起私盘。直到所有套系各归其主、无人可交易,游戏才结束。"
+            : "开拍一张新古董,或与持有相同套系的对手发起私盘。"}
+        </p>
+        {!endgame && (
+          <button className="btn btn-primary btn-big" onClick={() => client.startAuction()}>
+            🔨 开拍下一张
+          </button>
+        )}
         <button
-          className="btn btn-gold btn-big"
+          className={`btn btn-big ${endgame ? "btn-primary" : "btn-gold"}`}
           onClick={() => { client.getDealTargets(); setShowTargets(true); }}
         >
           ⇄ 发起私盘
@@ -345,7 +352,10 @@ function GameOverPanel({ snap }: { snap: Snapshot }) {
           </div>
         ))}
       </div>
-      <p className="hint">得分 =(各集齐套系分值之和)× 套数;现金不计分。</p>
+      <p className="hint">
+        牌堆抽尽且所有套系已各归其主(无私盘可发)——对局结束。
+        得分 =(各集齐套系分值之和)× 套数;现金不计分。
+      </p>
       <button className="btn btn-primary btn-big" onClick={() => client.leaveRoom()}>返回大厅</button>
     </section>
   );

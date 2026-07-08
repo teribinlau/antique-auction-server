@@ -439,19 +439,34 @@ class GameState {
     const offerTotal = Object.entries(this.dealOffer).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
     const counterTotal = Object.entries(this.dealCounter).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
 
-    // 平局：原版反复重新暗标，直到分出高低（不掷币）。清空本轮报价，双方重标。
+    // 平局：重新暗标一次；再平（第 2 次）则掷币定赢家。
+    // 掷币封顶是必须的：牌空后的强制私盘里，双方都没钱时只能都押 0，
+    // 没有封顶就是 0=0 无限平局，整局永远结不了（随机模拟 1% 的局会踩中）。
     if (offerTotal === counterTotal) {
       this.dealTieCount++;
-      this.dealOffer = {};
-      this.dealCounter = {};
-      this.dealInitiatorSubmitted = false;
-      this.dealTargetSubmitted = false;
-      return { event: "deal_tie", tieCount: this.dealTieCount, initiatorId: this.dealInitiator, targetId: this.dealTarget, setId: this.dealSetId };
+      if (this.dealTieCount < 2) {
+        this.dealOffer = {};
+        this.dealCounter = {};
+        this.dealInitiatorSubmitted = false;
+        this.dealTargetSubmitted = false;
+        return { event: "deal_tie", tieCount: this.dealTieCount, initiatorId: this.dealInitiator, targetId: this.dealTarget, setId: this.dealSetId };
+      }
+      // 连平掷币：随机定赢家；双方互换各自押注（总额相等，公平），牌照常易主。
+      const flipWinner = Math.random() < 0.5 ? initiator : target;
+      return this._settleDeal(flipWinner, flipWinner === initiator ? target : initiator,
+                              offerTotal, counterTotal, flipWinner.playerId, true);
     }
 
     const initiatorWins = offerTotal > counterTotal;
     const winner = initiatorWins ? initiator : target;
     const loser = initiatorWins ? target : initiator;
+    return this._settleDeal(winner, loser, offerTotal, counterTotal, winner.playerId, false);
+  }
+
+  // 私盘结算共用：转移牌 + 互付双方押注 + 广播(普通=winnerId;掷币=tieForcedWinner)。
+  _settleDeal(winner, loser, offerTotal, counterTotal, winnerId, byCoinFlip) {
+    const initiator = this.getPlayer(this.dealInitiator);
+    const target = this.getPlayer(this.dealTarget);
 
     // 换牌张数 = 双方该套持有的【较小值】（原版："对方只有 1 张就只换 1 张，哪怕你有 2~3 张"；
     // 双方各 2 张时换 2 张 = 整套归赢家）。因每套仅 4 张，min 必 ≤ 2，对应原版"2 或 4 张"。
@@ -473,7 +488,9 @@ class GameState {
     deductMoneyExact(target.money, this.dealCounter);
 
     this._checkCompleteSet(winner.playerId);
-    const result = { event: "deal_resolved", winnerId: winner.playerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
+    const result = byCoinFlip
+      ? { event: "deal_resolved", tieForcedWinner: winnerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator }
+      : { event: "deal_resolved", winnerId, loserId: loser.playerId, tradeCount, offerTotal, counterTotal, setId: this.dealSetId, initiatorId: this.dealInitiator };
     return [result, this._advanceTurn()].flat();
   }
 

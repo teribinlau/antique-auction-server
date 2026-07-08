@@ -47,26 +47,29 @@ struct AuctionView: View {
             }
         } else {
             VStack(spacing: 16) {
-                Text("轮到你了 · 请选择行动")
+                Text(state.deckSize == 0 ? "私盘决胜 · 轮到你" : "轮到你了 · 请选择行动")
                     .font(.headline)
                     .foregroundStyle(Color.antiqueGold)
-                Text("开拍一张新古董，或与持有相同套系的对手发起私盘。")
+                Text(state.deckSize == 0
+                     ? "牌堆已空：与持有相同套系的对手发起私盘，直到所有套系各归其主、无人可交易，游戏才结束。"
+                     : "开拍一张新古董，或与持有相同套系的对手发起私盘。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button {
-                    client.startAuction()
-                } label: {
-                    Label("开拍下一张", systemImage: "hammer.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(state.deckSize > 0 ? Color.accentColor : Color.gray)
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                if state.deckSize > 0 {
+                    Button {
+                        client.startAuction()
+                    } label: {
+                        Label("开拍下一张", systemImage: "hammer.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor)
+                            .foregroundStyle(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
-                .disabled(state.deckSize == 0)
 
                 Button {
                     client.getDealTargets()

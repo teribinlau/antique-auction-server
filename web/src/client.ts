@@ -388,6 +388,12 @@ export class GameClient {
 
       case "state_update": {
         const state = ev.state as GameStateView;
+        // 最后一张牌的拍卖刚结束、进入「私盘决胜」的那一刻,广而告之(只触发一次)
+        const prev = this.snap.state;
+        if (prev && prev.auctionCard && !state.auctionCard &&
+            state.deckSize === 0 && state.phase === "AUCTION") {
+          this.banner("gold", "牌堆已空!进入私盘决胜——直到无人可交易才结束");
+        }
         const p: Partial<Snapshot> = { state };
         if (state.phase !== "AUCTION" || !state.auctionCard) p.currentBidderId = null;
         if (state.phase !== "SNIPE") p.snipePrompt = null;
