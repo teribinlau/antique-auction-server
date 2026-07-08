@@ -23,10 +23,14 @@ export interface BannerMsg {
   text: string;
 }
 
+/** 界面风格:classic=竖屏经典版;table=横屏牌桌版(斗地主式) */
+export type UiMode = "classic" | "table";
+
 export interface Snapshot {
   conn: ConnState;
   serverUrl: string;
   playerName: string;
+  uiMode: UiMode;
   roomCode: string | null;
   roomName: string | null;
   myPlayerId: number | null;
@@ -49,6 +53,7 @@ const LS = {
   name: "aa.playerName",
   server: "aa.serverURL",
   lastRoom: "aa.lastRoom",
+  uiMode: "aa.uiMode",
   token: (code: string) => `aa.token.${code}`,
 };
 
@@ -94,6 +99,7 @@ export class GameClient {
       conn: "idle",
       serverUrl: localStorage.getItem(LS.server) || defaultServerUrl(),
       playerName: localStorage.getItem(LS.name) || "",
+      uiMode: (localStorage.getItem(LS.uiMode) as UiMode) || "classic",
       roomCode: null,
       roomName: null,
       myPlayerId: null,
@@ -275,6 +281,12 @@ export class GameClient {
   // ── 横幅 ─────────────────────────────────────────────────
   /** 供视图层弹一条提示(如「房号已复制」) */
   toast(text: string) { this.banner("info", text); }
+
+  /** 切换界面风格(经典竖屏 / 牌桌横屏),持久化 */
+  setUiMode(mode: UiMode) {
+    localStorage.setItem(LS.uiMode, mode);
+    this.patch({ uiMode: mode });
+  }
 
   private banner(kind: BannerMsg["kind"], text: string) {
     const b: BannerMsg = { id: bannerSeq++, kind, text };

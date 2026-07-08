@@ -154,6 +154,20 @@ input::placeholder { color: rgba(239, 232, 218, 0.35); }
 }
 .chip-mini { font-size: 11px; padding: 2px 7px; }
 .chip-code { letter-spacing: 0.1em; color: var(--gold); border: 1px solid var(--gold-dim); cursor: pointer; }
+.chip-btn { cursor: pointer; border: 1px solid var(--line); }
+
+/* 界面风格选择(连接页) */
+.mode-seg { display: flex; gap: 6px; }
+.mode-seg button {
+  flex: 1;
+  padding: 11px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.mode-seg .mode-on { border-color: var(--gold-dim); color: var(--gold); background: rgba(212, 169, 87, 0.1); }
 .chip-gold { background: var(--gold); color: #241c0d; }
 .chip-set { background: rgba(0, 0, 0, 0.45); }
 .chip-complete { background: var(--gold); color: #241c0d; }

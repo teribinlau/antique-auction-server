@@ -33,6 +33,19 @@ export function ConnectView({ snap }: { snap: Snapshot }) {
             onChange={(e) => setServer(e.target.value)}
           />
         </label>
+        <div className="field">
+          <span>对局界面</span>
+          <div className="mode-seg">
+            <button
+              className={snap.uiMode === "table" ? "mode-on" : ""}
+              onClick={() => client.setUiMode("table")}
+            >🀄 牌桌横屏版</button>
+            <button
+              className={snap.uiMode === "classic" ? "mode-on" : ""}
+              onClick={() => client.setUiMode("classic")}
+            >📱 经典竖屏版</button>
+          </div>
+        </div>
         <button
           className="btn btn-primary btn-big"
           disabled={!canGo}

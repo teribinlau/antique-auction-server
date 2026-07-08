@@ -7,12 +7,20 @@ import { ConnectView } from "./views/ConnectView";
 import { LobbyView } from "./views/LobbyView";
 import { WaitingView } from "./views/WaitingView";
 import { GameView } from "./views/GameView";
+import { TableGameView } from "./views/table/TableGameView";
 
 export default function App() {
   const snap = useSyncExternalStore(client.subscribe, client.getSnapshot);
 
+  const inGame = snap.roomCode !== null && snap.state !== null && snap.state.phase !== "WAITING";
+
+  // 牌桌版自带旋转与横幅,独立渲染
+  if (inGame && snap.uiMode === "table") {
+    return <TableGameView snap={snap} />;
+  }
+
   let view: JSX.Element;
-  if (snap.roomCode !== null && snap.state !== null && snap.state.phase !== "WAITING") {
+  if (inGame) {
     view = <GameView snap={snap} />;
   } else if (snap.roomCode !== null) {
     view = <WaitingView snap={snap} />;

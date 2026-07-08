@@ -41,6 +41,7 @@ export function GameView({ snap }: { snap: Snapshot }) {
         )}
         <span className="chip chip-mini">🂠 牌堆 {state.deckSize}</span>
         {state.silverIngotCount > 0 && <span className="chip chip-mini">🥈 白银 {state.silverIngotCount}</span>}
+        <button className="chip chip-mini chip-btn" onClick={() => client.setUiMode("table")}>🀄 牌桌版</button>
         <span className="topbar-actor">
           {myTurn
             ? <span className="chip chip-gold">轮到你</span>
