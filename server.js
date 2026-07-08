@@ -7,6 +7,7 @@ const { GameState } = require("./game_logic");
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 5; // 房间人数上限(原版 Kuhhandel 支持 3-5 人;逻辑层按 players.length 自适应)
+const ROOM_GRACE_MS = 10 * 60 * 1000; // 游戏中全员掉线后房间保留时长,期间可凭令牌重连
 
 // 在线版本戳：访问 /version 即可看到当前部署的 commit（Render 注入 RENDER_GIT_COMMIT）。
 const STARTED_AT = new Date().toISOString();
@@ -108,6 +109,23 @@ function dispatchEvents(room, events) {
   broadcastState(room);
 }
 
+// 当前行动玩家掉线时,把回合推进到下一个在线玩家,避免全桌等一个回不来的人。
+// close(掉线)与 rejoin_room(重连回来发现行动者还离线)两处共用。
+function ensureActionableActor(room) {
+  const game = room.game;
+  if (!game || game.phase === "GAME_OVER") return;
+  const onlineIds = new Set(room.players.filter(p => p.connected).map(p => p.playerId));
+  if (onlineIds.size === 0) return;
+  if (onlineIds.has(game.currentPlayer().playerId)) return;
+  let steps = 0;
+  do {
+    game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.players.length;
+    steps++;
+  } while (!onlineIds.has(game.currentPlayer().playerId) && steps < game.players.length);
+  const ev = game.nextTurn();
+  dispatchEvents(room, ev);
+}
+
 // 自动替「掉线且轮到其出价」的玩家放弃竞价，避免拍卖卡在等一个回不来的人。
 // 每次竞价推进后（开拍/出价/放弃/掉线）调用；会连续跳过多个掉线者，直至轮到在线玩家或竞价结束。
 function autoResolveDisconnectedBids(room) {
@@ -204,6 +222,9 @@ wss.on("connection", (ws) => {
       if (!room) { send(ws, { event: "error", message: "房间不存在或已结束" }); return; }
       const player = room.players.find(p => p.reconnectToken && p.reconnectToken === msg.reconnectToken);
       if (!player) { send(ws, { event: "error", message: "重连失败：令牌无效" }); return; }
+      // 有人回来了:取消「空房回收」倒计时
+      clearTimeout(room.emptyTimer);
+      room.emptyTimer = null;
       // 把新连接绑回原座位
       player.ws = ws;
       player.connected = true;
@@ -219,6 +240,9 @@ wss.on("connection", (ws) => {
         if (room.game.phase !== "GAME_OVER") {
           send(ws, { event: "turn_changed", playerId: room.game.currentPlayer().playerId });
         }
+        // 若当前行动者/出价者仍离线(如全员掉线后第一个回来的人),推进到在线玩家,别让他干等
+        ensureActionableActor(room);
+        autoResolveDisconnectedBids(room);
       }
       return;
     }
@@ -336,21 +360,18 @@ wss.on("connection", (ws) => {
     player.ws = null;
     broadcast(room, { event: "player_disconnected", playerName: player.playerName, playerId: player.playerId });
 
-    // 所有人都掉线 → 无人可重连，回收房间
+    // 所有人都掉线:游戏已结束直接回收;进行中保留一段宽限期,期间任何人可凭令牌重连
     const connected = room.players.filter(p => p.connected);
-    if (connected.length === 0) { delete rooms[ws._roomCode]; return; }
+    if (connected.length === 0) {
+      if (room.game.phase === "GAME_OVER") { delete rooms[ws._roomCode]; return; }
+      const code = ws._roomCode;
+      clearTimeout(room.emptyTimer);
+      room.emptyTimer = setTimeout(() => { delete rooms[code]; }, ROOM_GRACE_MS);
+      return; // 状态冻结,等人回来(回来时 rejoin_room 会推进回合)
+    }
 
     // 掉线者正是当前行动玩家 → 推进到下一个在线玩家，避免卡住
-    if (room.game.phase !== "GAME_OVER" && room.game.currentPlayer().playerId === player.playerId) {
-      const onlineIds = new Set(connected.map(p => p.playerId));
-      let steps = 0;
-      do {
-        room.game.currentPlayerIndex = (room.game.currentPlayerIndex + 1) % room.game.players.length;
-        steps++;
-      } while (!onlineIds.has(room.game.currentPlayer().playerId) && steps < room.game.players.length);
-      const ev = room.game.nextTurn();
-      dispatchEvents(room, ev);
-    }
+    ensureActionableActor(room);
 
     // 若掉线者正轮到出价，自动替其放弃，避免拍卖卡住
     autoResolveDisconnectedBids(room);

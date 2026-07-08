@@ -108,11 +108,35 @@ export class GameClient {
       banners: [],
       disconnectedIds: [],
     };
+    // 回到前台:探活/重连。微信/手机浏览器常把后台页面冻结——socket 可能已死但 close 迟迟不来。
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && this.snap.conn !== "connected") {
-        this.tryRejoinAfterDrop();
+      if (document.visibilityState !== "visible") return;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({ action: "request_state" }); // 游戏中会刷新;等待室无响应,无害
+        return;
       }
+      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) return; // 正在连,别打断
+      // 假活/已断:立刻按掉线处理并快速重连
+      if (this.snap.conn === "connected") this.patch({ conn: "disconnected" });
+      try { this.ws?.close(); } catch { /* 忽略 */ }
+      this.ws = null;
+      if (this.reconnectTimer !== null) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+      this.reconnectAttempt = 0; // 用户人在,给最快的重试节奏
+      this.tryRejoinAfterDrop();
     });
+    // 页面(重新)加载:若存有名字+牌局令牌,自动连回去——微信杀掉网页再打开也能回牌局
+    const lastRoom = localStorage.getItem(LS.lastRoom);
+    const token = lastRoom ? localStorage.getItem(LS.token(lastRoom)) : null;
+    if (this.snap.playerName && lastRoom && token) {
+      this.wantRejoin = true;
+      setTimeout(() => this.connect(this.snap.serverUrl, this.snap.playerName), 0);
+    }
+  }
+
+  /** 是否存有可恢复的牌局(房号+令牌) */
+  hasResumableGame(): boolean {
+    const code = localStorage.getItem(LS.lastRoom);
+    return !!(code && localStorage.getItem(LS.token(code)));
   }
 
   // ── store 对接 ────────────────────────────────────────────
@@ -134,7 +158,15 @@ export class GameClient {
     localStorage.setItem(LS.name, playerName);
     this.patch({ serverUrl: url, playerName, conn: "connecting" });
     this.openSocket(url, () => {
-      this.send({ action: "list_rooms" });
+      // 存有牌局令牌 → 优先绑回原座位(令牌失效时 error 归约会清令牌、退回大厅)
+      const code = localStorage.getItem(LS.lastRoom);
+      const token = code ? localStorage.getItem(LS.token(code)) : null;
+      if (code && token) {
+        this.wantRejoin = true;
+        this.send({ action: "rejoin_room", roomCode: code, reconnectToken: token });
+      } else {
+        this.send({ action: "list_rooms" });
+      }
     });
   }
 
