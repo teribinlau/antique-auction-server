@@ -388,6 +388,64 @@ input::placeholder { color: rgba(239, 232, 218, 0.35); }
 .banner-error { border-color: var(--red); color: #f2a19e; }
 .banner-win { border-color: var(--gold); color: var(--gold); background: rgba(60, 46, 18, 0.95); }
 
+/* ── 新手指南 ── */
+.guide {
+  position: fixed; inset: 0; z-index: 30;
+  overflow-y: auto;
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(212, 169, 87, 0.14), transparent 60%),
+    linear-gradient(180deg, var(--bg1), var(--bg0));
+}
+.guide-top {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  background: linear-gradient(180deg, var(--bg1) 78%, transparent);
+}
+.guide-title { font-family: var(--font-serif); font-size: 21px; font-weight: 800; color: var(--gold); letter-spacing: 0.08em; }
+.guide-body {
+  max-width: 560px; margin: 0 auto;
+  padding: 4px 16px calc(30px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 14px;
+}
+.guide-lead { font-size: 15px; line-height: 1.75; color: var(--text); }
+.guide-lead b, .guide-sec b { color: var(--gold); font-weight: 700; }
+.guide-sec {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 15px 16px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.guide-sec h3 { font-family: var(--font-serif); color: var(--gold); font-size: 17px; letter-spacing: 0.04em; }
+.guide-sec p { font-size: 13.5px; line-height: 1.8; }
+.guide-tips { border-color: var(--gold-dim); background: rgba(212, 169, 87, 0.06); }
+.g-formula {
+  text-align: center;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px !important;
+  color: var(--gold);
+}
+.g-formula span { display: block; font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+.g-demo { display: flex; justify-content: center; padding: 6px 0 2px; }
+.g-demo-card { max-width: 190px; margin: 0 auto; }
+.g-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.g-fan { position: relative; width: 240px; height: 118px; margin: 0 auto; }
+.g-fan-tip {
+  position: absolute; left: 0; right: 0; bottom: -2px;
+  text-align: center; font-size: 11px; color: var(--text-dim);
+}
+.g-fan .t-bill { top: 14px; }
+.g-pile { position: relative; width: 200px; height: 66px; margin: 0 auto; }
+.g-pile .t-stake-card { position: absolute; }
+.g-pile-label {
+  position: absolute; left: 84px; top: 22px;
+  font-size: 12.5px; color: var(--text-dim); white-space: nowrap;
+}
+.g-pile-label b { color: var(--gold); }
+
 /* ── 半屏面板 / 遮罩 ── */
 .sheet-mask {
   position: fixed; inset: 0; z-index: 40;

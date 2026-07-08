@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { client, type Snapshot } from "../client";
+import { GuideView } from "./GuideView";
 
 export function ConnectView({ snap }: { snap: Snapshot }) {
   const [name, setName] = useState(snap.playerName);
   const [server, setServer] = useState(snap.serverUrl);
+  const [showGuide, setShowGuide] = useState(false);
   const canGo = name.trim().length > 0 && snap.conn !== "connecting";
+
+  if (showGuide) return <GuideView onClose={() => setShowGuide(false)} />;
 
   return (
     <div className="page page-center">
@@ -52,6 +56,9 @@ export function ConnectView({ snap }: { snap: Snapshot }) {
           onClick={() => client.connect(server, name.trim())}
         >
           {snap.conn === "connecting" ? "连接中…" : "进入大厅"}
+        </button>
+        <button className="btn btn-gold" onClick={() => setShowGuide(true)}>
+          ❓ 如何游玩(新手指南)
         </button>
         {snap.conn === "disconnected" && (
           <p className="hint hint-error">连接断开了——服务器冷启动约需 1 分钟,稍等后重试。</p>
