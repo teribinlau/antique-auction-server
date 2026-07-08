@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/client.ts","./src/main.tsx","./src/protocol.ts","./src/theme.ts","./src/components/Banner.tsx","./src/components/BillPicker.tsx","./src/components/CardView.tsx","./src/components/OpponentPanel.tsx","./src/views/ConnectView.tsx","./src/views/GameView.tsx","./src/views/LobbyView.tsx","./src/views/WaitingView.tsx"],"version":"5.9.3"}
