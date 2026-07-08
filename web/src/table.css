@@ -94,7 +94,8 @@
 .t-panel {
   display: flex; flex-direction: column; gap: 8px;
   align-items: center; justify-content: center;
-  max-width: 420px; min-width: 240px;
+  max-width: min(430px, 62vw);
+  min-width: min(240px, 44vw);
   padding: 10px 14px;
   border-radius: 14px;
   border: 1px solid var(--gold-dim);
@@ -116,8 +117,8 @@
 .t-gameover { display: flex; flex-direction: column; gap: 7px; min-width: 300px; max-height: 100%; overflow-y: auto; }
 .t-gameover .scorerow { padding: 8px 12px; }
 
-/* ── 我的区域 ── */
-.t-mine { z-index: 2; display: flex; flex-direction: column; gap: 3px; }
+/* ── 我的区域(超宽屏限宽居中) ── */
+.t-mine { z-index: 2; display: flex; flex-direction: column; gap: 3px; width: 100%; max-width: 940px; margin: 0 auto; }
 .t-mine-head {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 12px; color: var(--text-dim); padding: 0 4px;
@@ -225,17 +226,28 @@
 .t-chat {
   position: absolute;
   left: 10px;
-  top: 44px;
+  top: 40px;
   z-index: 5;
-  width: 250px;
-  max-width: 34%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(300px, 42%);
   text-align: left;
-  background: rgba(20, 16, 11, 0.55);
+  background: rgba(20, 16, 11, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 7px 10px 5px;
+  border-radius: 999px;
+  padding: 4px 12px 4px 8px;
   backdrop-filter: blur(4px);
   cursor: pointer;
+}
+.t-chat-badge { font-size: 11px; color: var(--gold); flex-shrink: 0; font-weight: 700; }
+.t-chat-latest {
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: drop 0.22s ease-out;
 }
 .t-chat-line {
   font-size: 11.5px;
@@ -257,11 +269,15 @@
 .t-chat-open {
   cursor: default;
   width: 300px;
-  max-width: 44%;
+  max-width: 46%;
   bottom: 12px;
   display: flex;
   flex-direction: column;
-  background: rgba(20, 16, 11, 0.88);
+  align-items: stretch;
+  gap: 0;
+  border-radius: 12px;
+  padding: 8px 10px 6px;
+  background: rgba(20, 16, 11, 0.9);
 }
 .t-chat-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -274,3 +290,23 @@
 .t-chat-list .t-chat-line { white-space: normal; animation: none; }
 
 .table-root .overlay { position: absolute; }
+
+/* ── 小横屏档位(有效高度 < 390:iPhone SE 等;卡牌尺寸由 JS 同步缩小) ── */
+.t-short { padding-top: 4px; padding-bottom: 4px; }
+.t-short .t-seats { gap: 8px; padding: 2px 0 1px; }
+.t-short .t-seat { padding: 3px 8px 3px 4px; gap: 6px; }
+.t-short .t-avatar { width: 28px; height: 28px; font-size: 13px; }
+.t-short .t-seat-sets { display: none; }         /* 高度紧张时收起套系徽章,张数/状态保留 */
+.t-short .t-stage { gap: 8px; padding: 1px 0; }
+.t-short .t-card { max-height: 138px; }
+.t-short .t-panel { gap: 5px; padding: 7px 10px; }
+.t-short .t-title { font-size: 13.5px; }
+.t-short .t-hint { font-size: 11px; }
+.t-short .t-btnrow .btn { padding: 7px 12px; font-size: 13px; }
+.t-short .t-bill-main { font-size: 17px; }
+.t-short .t-bill-corner { font-size: 10px; }
+.t-short .t-acard-name { font-size: 8px; }
+.t-short .t-stake-pile { height: 54px; }
+.t-short .t-stake-card { width: 38px; height: 52px; font-size: 12px; }
+.t-short .t-mine-head { font-size: 11px; }
+.t-short .t-bill-up { transform: translateY(-12px); }

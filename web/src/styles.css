@@ -16,6 +16,15 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
+:root {
+  /* 正文:现代黑体栈(全系统自带,微信内可靠) */
+  --font-sans: "PingFang SC", "HarmonyOS Sans SC", "MiSans", -apple-system,
+    "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  /* 标题/卡名/房号:宋体系衬线,古董气质 */
+  --font-serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC",
+    "SimSun", serif;
+}
+
 html, body {
   height: 100%;
   background:
@@ -23,9 +32,16 @@ html, body {
     linear-gradient(180deg, var(--bg1), var(--bg0));
   background-attachment: fixed;
   color: var(--text);
-  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
+  font-variant-numeric: tabular-nums; /* 数字全局等宽,金额/张数对齐不跳动 */
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 衬线展示字:标题 / 卡名 / 房号 */
+.hero h1, .gold-title, .t-title, .card-name, .wait-code, .chip-code {
+  font-family: var(--font-serif);
 }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
@@ -77,7 +93,7 @@ input::placeholder { color: rgba(239, 232, 218, 0.35); }
 /* ── 首屏 ── */
 .hero { text-align: center; }
 .hero-glyph { font-size: 56px; }
-.hero h1 { font-size: 32px; letter-spacing: 0.12em; color: var(--gold); margin-top: 6px; }
+.hero h1 { font-size: 34px; letter-spacing: 0.18em; color: var(--gold); margin-top: 6px; font-weight: 700; }
 .hero-sub { color: var(--text-dim); margin-top: 6px; font-size: 14px; }
 
 .field { display: flex; flex-direction: column; gap: 6px; }

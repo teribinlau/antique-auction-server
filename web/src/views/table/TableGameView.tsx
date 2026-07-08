@@ -110,9 +110,12 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
   const rootStyle = portrait
     ? { width: h, height: w }
     : undefined;
+  // 小横屏档位(iPhone SE 一类,竖持时看旋转后的有效高度=视口宽)
+  const effH = portrait ? w : h;
+  const short = effH < 390;
 
   return (
-    <div className={`table-root${portrait ? " table-rotated" : ""}`} style={rootStyle}>
+    <div className={`table-root${portrait ? " table-rotated" : ""}${short ? " t-short" : ""}`} style={rootStyle}>
       <ChatLog log={snap.log} />
 
       {/* 顶栏 */}
@@ -193,8 +196,8 @@ export function TableGameView({ snap }: { snap: Snapshot }) {
             )}
           </span>
         </div>
-        <AntiqueFan state={state} onPreview={setPreview} />
-        <MoneyFan money={state.me.money} picked={picked} selecting={selecting} onToggle={toggleBill} />
+        <AntiqueFan state={state} onPreview={setPreview} short={short} />
+        <MoneyFan money={state.me.money} picked={picked} selecting={selecting} onToggle={toggleBill} short={short} />
       </div>
 
       {/* 私盘目标选择 */}
@@ -254,18 +257,14 @@ function ChatLog({ log }: { log: BannerMsg[] }) {
       </div>
     );
   }
+  // 迷你态:单行最新消息 + 角标(极致紧凑,不与桌面元素重合)
+  const last = recent[recent.length - 1];
   return (
     <button className="t-chat" onClick={() => setOpen(true)} title="点开查看全部消息">
-      {recent.length === 0 ? (
-        <p className="t-chat-line t-chat-empty">💬 对局消息</p>
-      ) : (
-        recent.map((m, i) => (
-          <p key={m.id} className={`t-chat-line t-chat-${m.kind}`} style={{ opacity: 0.55 + 0.225 * i }}>
-            {m.text}
-          </p>
-        ))
-      )}
-      <span className="t-chat-more">💬 {log.length > 3 ? `+${log.length - 3} 条历史` : "点开回看"}</span>
+      <span className="t-chat-badge">💬{log.length > 0 ? log.length : ""}</span>
+      <span key={last?.id ?? 0} className={`t-chat-latest t-chat-${last?.kind ?? "info"}`}>
+        {last ? last.text : "对局消息"}
+      </span>
     </button>
   );
 }
@@ -504,18 +503,19 @@ function StakePile({ count, label, sub }: { count: number; label: string; sub?: 
 }
 
 // ── 古董手牌(扇形) ──────────────────────────────────────────
-function AntiqueFan({ state, onPreview }: { state: GameStateView; onPreview: (c: Card) => void }) {
+function AntiqueFan({ state, onPreview, short }: { state: GameStateView; onPreview: (c: Card) => void; short: boolean }) {
   const cards = useMemo(
     () => [...state.me.antiques].sort((a, b) => b.setScore - a.setScore || a.setId.localeCompare(b.setId) || a.cardId.localeCompare(b.cardId)),
     [state.me.antiques],
   );
-  const W = 56;
+  const W = short ? 48 : 56;                      // 与 CSS 的 .t-short 档位保持一致
+  const CH = short ? 66 : 78;
   const { ref, step } = useFanStep(cards.length, W, W * 0.72);
   if (cards.length === 0) {
-    return <div className="t-fan t-fan-antique t-fan-empty" ref={ref}>尚无古董——去拍下第一件!</div>;
+    return <div className="t-fan t-fan-antique t-fan-empty" style={{ height: CH + 6 }} ref={ref}>尚无古董——去拍下第一件!</div>;
   }
   return (
-    <div className="t-fan t-fan-antique" ref={ref}>
+    <div className="t-fan t-fan-antique" style={{ height: CH + 6 }} ref={ref}>
       <div className="t-fan-inner" style={{ width: W + step * (cards.length - 1) }}>
         {cards.map((c, i) => {
           const st = styleFor(c.setId);
@@ -525,7 +525,7 @@ function AntiqueFan({ state, onPreview }: { state: GameStateView; onPreview: (c:
             <button
               key={`${c.cardId}-${i}`}
               className="t-acard"
-              style={{ left: i * step, zIndex: i, borderColor: done ? GOLD : isElevated(rar) ? RARITY_ACCENT[rar] : "rgba(255,255,255,.2)" }}
+              style={{ left: i * step, zIndex: i, width: W, height: CH, borderColor: done ? GOLD : isElevated(rar) ? RARITY_ACCENT[rar] : "rgba(255,255,255,.2)" }}
               onClick={() => onPreview(c)}
               title={c.cardName}
             >
@@ -550,9 +550,9 @@ function ArtThumb({ card, glyph, p, s }: { card: Card; glyph: string; p: string;
 }
 
 // ── 资金手牌(扇形,斗地主式选牌) ─────────────────────────────
-function MoneyFan({ money, picked, selecting, onToggle }: {
+function MoneyFan({ money, picked, selecting, onToggle, short }: {
   money: Money; picked: Money; selecting: boolean;
-  onToggle: (d: Denom, raised: boolean) => void;
+  onToggle: (d: Denom, raised: boolean) => void; short: boolean;
 }) {
   const bills = useMemo(() => {
     const arr: { d: Denom; idx: number }[] = [];
@@ -562,13 +562,15 @@ function MoneyFan({ money, picked, selecting, onToggle }: {
     }
     return arr;
   }, [money]);
-  const W = 62;
+  const W = short ? 52 : 62;                      // 与 CSS 的 .t-short 档位保持一致
+  const CH = short ? 68 : 82;
+  const fanH = short ? 82 : 96;
   const { ref, step } = useFanStep(bills.length, W, W * 0.62);
   if (bills.length === 0) {
-    return <div className="t-fan t-fan-money t-fan-empty" ref={ref}>没钱了…等白银加成或私盘回血</div>;
+    return <div className="t-fan t-fan-money t-fan-empty" style={{ height: fanH }} ref={ref}>没钱了…等白银加成或私盘回血</div>;
   }
   return (
-    <div className={`t-fan t-fan-money${selecting ? " t-fan-selecting" : ""}`} ref={ref}>
+    <div className={`t-fan t-fan-money${selecting ? " t-fan-selecting" : ""}`} style={{ height: fanH }} ref={ref}>
       <div className="t-fan-inner" style={{ width: W + step * (bills.length - 1) }}>
         {bills.map((b, i) => {
           const raised = b.idx < (picked[b.d] ?? 0);
@@ -576,7 +578,7 @@ function MoneyFan({ money, picked, selecting, onToggle }: {
             <button
               key={`${b.d}-${b.idx}`}
               className={`t-bill${raised ? " t-bill-up" : ""}`}
-              style={{ left: i * step, zIndex: i, color: BILL_COLOR[b.d] }}
+              style={{ left: i * step, zIndex: i, width: W, height: CH, color: BILL_COLOR[b.d] }}
               onClick={() => onToggle(b.d, raised)}
             >
               <span className="t-bill-corner">{b.d === "0" ? "废" : b.d}</span>
