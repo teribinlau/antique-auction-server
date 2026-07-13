@@ -366,6 +366,14 @@ export class GameClient {
         break;
       }
 
+      case "lobby_state": {
+        this.patch({
+          myPlayerId: Number(ev.playerId),
+          waitingPlayers: (ev.players as string[]) ?? [],
+        });
+        break;
+      }
+
       case "player_left": {
         const name = String(ev.playerName ?? "");
         this.patch({ waitingPlayers: this.snap.waitingPlayers.filter((n) => n !== name) });

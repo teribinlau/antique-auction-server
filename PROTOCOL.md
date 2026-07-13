@@ -11,13 +11,13 @@
 | join_room | roomCode, playerName?, password? | 返回 joined_room（含你的 playerId 与 reconnectToken）。**游戏进行中**：若存在「已掉线且昵称相同」的座位，则绑回该座位并返回 rejoined_room（发新令牌，旧令牌作废）——令牌丢失（换设备/清缓存）时凭房号+原昵称回局的兜底通道；否则返回 error「游戏已开始」 |
 | rejoin_room | roomCode, reconnectToken | 断线重连：用令牌把新连接绑回原座位（替代 join_room）。成功返回 rejoined_room，随后自动补发 state_update（及未结束时的 turn_changed）；令牌无效则返回 error |
 | request_state | — | 仅游戏进行中有响应 |
-| start_game | — | ≥2 人可开始 |
+| start_game | — | 仅等待室 0 号房主可调用，≥2 人可开始；进行中的游戏不能重复开始 |
 | start_auction | — | 仅当前回合玩家 |
 | place_bid | amount(Int) | 仅 AUCTION、非拍卖人、轮到你时 |
 | pass_bid | — | 同上 |
-| action_snipe | doSnipe(Bool), paid?({面值:张数}) | 仅 SNIPE 且你是拍卖人；doSnipe=true 时 paid 总额须≥highestBid |
+| action_snipe | doSnipe(Bool), paid?({面值:张数}) | 仅 SNIPE 且你是拍卖人；doSnipe=true 时 paid 总额须≥highestBid，且每张钞票必须真实持有 |
 | start_private_deal | targetId(Int), setId(String) | 仅当前回合玩家 |
-| submit_deal_offer | paid({面值:张数}) | **顺序制**：发起人必须先押注（目标先提交会返回 error「请等发起人先出价」）；发起人押注后其【张数】公开（state.dealOfferBillCount 与 deal_offer_submitted.offerCount），目标再暗标。各方提交后不可改 |
+| submit_deal_offer | paid({面值:张数}) | **顺序制**：发起人必须先押注（目标先提交会返回 error「请等发起人先出价」）；发起人押注后其【张数】公开（state.dealOfferBillCount 与 deal_offer_submitted.offerCount），目标再暗标。各方提交后不可改；所有张数须为非负整数且不能超过真实持有量 |
 | get_deal_targets | — | 返回 deal_targets |
 
 ## 服务端 → 客户端（event）
@@ -30,6 +30,7 @@
 | rejoined_room | roomCode, roomName, playerId, playerCount, players:[String], reconnectToken（重连成功，语义同 joined_room=恢复座位；其后服务端自动补发 state_update 与未结束时的 turn_changed） |
 | player_joined | playerName, playerCount |
 | player_left | playerName |
+| lobby_state | playerId, playerCount, players:[String]（等待室有人离开后重排座位；客户端必须更新自己的 playerId 与完整名单） |
 | player_disconnected | playerName, playerId（某玩家游戏中掉线，座位保留以便凭令牌重连） |
 | player_reconnected | playerName, playerId（某玩家凭令牌重连回座位） |
 | error | message |
@@ -130,3 +131,4 @@
 2. **playerId 是入座顺序下标** 0..4（房间上限 5 人，`server.js` 的 `MAX_PLAYERS`）
 3. **「轮到谁出价」不在 state 里**，只能靠 `bid_turn` 事件维护
 4. **断线重连**：服务器每 30s 发 WebSocket 协议级 PING（客户端由系统自动回 PONG，无需额外代码）。入座 / 重连成功时下发 `reconnectToken`，客户端应持久化（按 roomCode）；游戏进行中掉线服务端**保留座位**（广播 `player_disconnected`），凭 `rejoin_room{roomCode,reconnectToken}` 可绑回原座位（广播 `player_reconnected`）。离开房间或 `game_over` 后客户端应清除已存令牌
+5. **钞票载荷**：只允许 `"0"|"10"|"50"|"100"|"200"|"500"` 六种 key；value 必须是非负安全整数，且不得超过玩家当前持有张数。校验失败返回 `error`，不会改变游戏状态。

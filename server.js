@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const { GameState } = require("./game_logic");
+const { validateStartGame } = require("./room_rules");
 
 const PORT = process.env.PORT || 3000;
 const MAX_PLAYERS = 5; // 房间人数上限(原版 Kuhhandel 支持 3-5 人;逻辑层按 players.length 自适应)
@@ -107,6 +108,33 @@ function dispatchEvents(room, events) {
     broadcast(room, ev);
   }
   broadcastState(room);
+}
+
+function dispatchActionResult(room, ws, result) {
+  if (result && result.error) {
+    send(ws, { event: "error", message: result.error });
+    return false;
+  }
+  dispatchEvents(room, result);
+  return true;
+}
+
+// 等待室有人离开后重新压紧座位号，确保房主始终为 0 号且开局时
+// room.players / GameState / 客户端 playerId 三者继续一一对应。
+function syncLobbySeats(room) {
+  room.players.forEach((player, playerId) => {
+    player.playerId = playerId;
+    if (player.ws) player.ws._playerId = playerId;
+  });
+  const players = room.players.map((p) => p.playerName);
+  for (const player of room.players) {
+    send(player.ws, {
+      event: "lobby_state",
+      playerId: player.playerId,
+      playerCount: room.players.length,
+      players,
+    });
+  }
 }
 
 // 补发「不在 state 里的瞬时事件」给重连/请求状态的连接:
@@ -299,7 +327,8 @@ wss.on("connection", (ws) => {
 
     // ── 开始游戏 ──────────────────────────────────────────
     if (action === "start_game") {
-      if (room.players.length < 2) { send(ws, { event: "error", message: "至少需要2名玩家" }); return; }
+      const startError = validateStartGame(room, ws._playerId);
+      if (startError) { send(ws, { event: "error", message: startError }); return; }
       room.game = new GameState(room.players.map(p => p.playerName));
       broadcast(room, { event: "game_started", playerCount: room.players.length });
       const ev = room.game.nextTurn();
@@ -313,58 +342,49 @@ wss.on("connection", (ws) => {
 
     // ── 开拍 ──────────────────────────────────────────────
     if (action === "start_auction") {
-      if (game.currentPlayer().playerId !== playerId) return;
+      if (game.currentPlayer().playerId !== playerId) { send(ws, { event: "error", message: "还没轮到你" }); return; }
       const ev = game.startAuction();
-      dispatchEvents(room, ev);
+      if (!dispatchActionResult(room, ws, ev)) return;
       autoResolveDisconnectedBids(room);
       return;
     }
 
     // ── 出价 ──────────────────────────────────────────────
     if (action === "place_bid") {
-      if (game.phase !== "AUCTION") return;
-      if (playerId === game.currentPlayer().playerId) return;
       const ev = game.placeBid(playerId, msg.amount);
-      if (ev.error) return;
-      dispatchEvents(room, ev);
+      if (!dispatchActionResult(room, ws, ev)) return;
       autoResolveDisconnectedBids(room);
       return;
     }
 
     // ── 放弃竞价 ──────────────────────────────────────────
     if (action === "pass_bid") {
-      if (game.phase !== "AUCTION") return;
-      if (playerId === game.currentPlayer().playerId) return;
       const ev = game.passBid(playerId);
-      if (ev.error) return;
-      dispatchEvents(room, ev);
+      if (!dispatchActionResult(room, ws, ev)) return;
       autoResolveDisconnectedBids(room);
       return;
     }
 
     // ── 截拍 ──────────────────────────────────────────────
     if (action === "action_snipe") {
-      if (game.currentPlayer().playerId !== playerId) return;
+      if (game.currentPlayer().playerId !== playerId) { send(ws, { event: "error", message: "只有拍卖人可以决定是否截拍" }); return; }
       const ev = game.actionSnipe(msg.doSnipe, msg.paid || {});
-      dispatchEvents(room, ev);
+      if (!dispatchActionResult(room, ws, ev)) return;
       autoResolveDisconnectedBids(room); // 付款失败会用同一张牌重拍，新 bid_turn 也需跳过掉线者
       return;
     }
 
     // ── 发起私盘 ──────────────────────────────────────────
     if (action === "start_private_deal") {
-      if (game.currentPlayer().playerId !== playerId) return;
-      const targetPlayer = game.getPlayer(msg.targetId);
-      if (!targetPlayer) return;
       const ev = game.startPrivateDeal(playerId, msg.targetId, msg.setId);
-      dispatchEvents(room, ev);
+      dispatchActionResult(room, ws, ev);
       return;
     }
 
     // ── 提交私盘报价 ──────────────────────────────────────
     if (action === "submit_deal_offer") {
       const ev = game.submitDealOffer(playerId, msg.paid || {});
-      dispatchEvents(room, ev);
+      dispatchActionResult(room, ws, ev);
       return;
     }
 
@@ -385,6 +405,7 @@ wss.on("connection", (ws) => {
       room.players = room.players.filter(p => p.ws !== ws);
       if (room.players.length === 0) { delete rooms[ws._roomCode]; return; }
       broadcast(room, { event: "player_left", playerName: ws._playerName });
+      syncLobbySeats(room);
       return;
     }
 

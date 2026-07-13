@@ -16,6 +16,7 @@ enum GameEvent: Decodable {
     case rejoinedRoom(JoinedRoom)
     case playerJoined(playerName: String, playerCount: Int)
     case playerLeft(playerName: String)
+    case lobbyState(playerId: Int, players: [String])
     /// 某玩家游戏中掉线（座位保留，可能凭令牌重连回来）。
     case playerDisconnected(playerName: String, playerId: Int)
     /// 某玩家重连回座位。
@@ -63,6 +64,7 @@ enum GameEvent: Decodable {
         case .rejoinedRoom: return "rejoined_room"
         case .playerJoined: return "player_joined"
         case .playerLeft: return "player_left"
+        case .lobbyState: return "lobby_state"
         case .playerDisconnected: return "player_disconnected"
         case .playerReconnected: return "player_reconnected"
         case .error: return "error"
@@ -131,6 +133,11 @@ enum GameEvent: Decodable {
         case "player_left":
             let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""
             self = .playerLeft(playerName: pn)
+
+        case "lobby_state":
+            let pid = try c.decodeIfPresent(Int.self, forKey: .key("playerId")) ?? -1
+            let players = try c.decodeIfPresent([String].self, forKey: .key("players")) ?? []
+            self = .lobbyState(playerId: pid, players: players)
 
         case "player_disconnected":
             let pn = try c.decodeIfPresent(String.self, forKey: .key("playerName")) ?? ""

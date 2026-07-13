@@ -16,24 +16,29 @@ export function LobbyView({ snap }: { snap: Snapshot }) {
   }, []);
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <span className="topbar-title">大厅</span>
-        <span className="topbar-me">{snap.playerName}</span>
+    <div className="page pregame-page lobby-page">
+      <main className="lobby-shell">
+      <header className="topbar lobby-topbar">
+        <div className="lobby-brand"><span>古董拍卖</span><small>PRIVATE SALON</small></div>
+        <div className="topbar-me"><small>当前席位</small><b>{snap.playerName}</b></div>
       </header>
 
-      <div className="tabs">
+      <nav className="tabs" aria-label="大厅操作">
         <button className={tab === "list" ? "tab tab-on" : "tab"} onClick={() => setTab("list")}>房间列表</button>
         <button className={tab === "create" ? "tab tab-on" : "tab"} onClick={() => setTab("create")}>创建房间</button>
         <button className={tab === "join" ? "tab tab-on" : "tab"} onClick={() => setTab("join")}>输码加入</button>
-      </div>
+      </nav>
 
       {tab === "list" && (
-        <div className="panel">
+        <section className="panel lobby-panel">
+          <div className="panel-heading">
+            <div><span>01</span><h2>正在候场</h2></div>
+            <button className="text-action" onClick={() => client.listRooms()}>刷新列表</button>
+          </div>
           {snap.lobbyRooms.length === 0 ? (
-            <p className="hint">暂无等待中的房间——创建一个,把房号发给朋友吧。</p>
+            <div className="empty-state"><i>空</i><p>暂时没有等待中的房间</p><button className="text-action" onClick={() => setTab("create")}>创建第一间 →</button></div>
           ) : (
-            snap.lobbyRooms.map((r) => (
+            <div className="room-list">{snap.lobbyRooms.map((r) => (
               <button
                 key={r.roomCode}
                 className="roomrow"
@@ -46,18 +51,19 @@ export function LobbyView({ snap }: { snap: Snapshot }) {
                   }
                 }}
               >
-                <span className="roomrow-name">{r.hasPassword ? "🔒 " : ""}{r.roomName}</span>
+                <span className="roomrow-index">{String(r.playerCount).padStart(2, "0")}</span>
+                <span className="roomrow-main"><b>{r.roomName}</b><small>{r.hasPassword ? "凭密码入场" : "开放席位"}</small></span>
                 <span className="roomrow-code">{r.roomCode}</span>
-                <span className={`roomrow-count${r.playerCount >= 5 ? " full" : ""}`}>{r.playerCount}/5</span>
+                <span className={`roomrow-count${r.playerCount >= 5 ? " full" : ""}`}>{r.playerCount}/5 <i>→</i></span>
               </button>
-            ))
+            ))}</div>
           )}
-          <button className="btn" onClick={() => client.listRooms()}>刷新</button>
-        </div>
+        </section>
       )}
 
       {tab === "create" && (
-        <div className="panel">
+        <section className="panel lobby-panel form-panel">
+          <div className="panel-heading"><div><span>02</span><h2>开一间私人拍卖厅</h2></div></div>
           <label className="field">
             <span>房间名</span>
             <input value={roomName} maxLength={16} placeholder={`${snap.playerName}的房间`} onChange={(e) => setRoomName(e.target.value)} />
@@ -67,13 +73,14 @@ export function LobbyView({ snap }: { snap: Snapshot }) {
             <input value={password} maxLength={12} placeholder="留空 = 无密码" onChange={(e) => setPassword(e.target.value)} />
           </label>
           <button className="btn btn-primary btn-big" onClick={() => client.createRoom(roomName.trim() || `${snap.playerName}的房间`, password)}>
-            创建并入座
+            <span>创建并入座</span><i aria-hidden="true">→</i>
           </button>
-        </div>
+        </section>
       )}
 
       {tab === "join" && (
-        <div className="panel">
+        <section className="panel lobby-panel form-panel">
+          <div className="panel-heading"><div><span>03</span><h2>凭房号赴约</h2></div></div>
           <label className="field">
             <span>房号(4 位)</span>
             <input
@@ -93,10 +100,11 @@ export function LobbyView({ snap }: { snap: Snapshot }) {
             disabled={joinCode.trim().length !== 4}
             onClick={() => client.joinRoom(joinCode.trim(), joinPwd)}
           >
-            加入房间
+            <span>加入房间</span><i aria-hidden="true">→</i>
           </button>
-        </div>
+        </section>
       )}
+      </main>
     </div>
   );
 }

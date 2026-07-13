@@ -15,6 +15,8 @@ const SET_SCORES = {
 const SILVER_INGOT_BONUS = [0, 50, 100, 200, 500];
 
 const STARTING_MONEY = { 0: 2, 10: 4, 50: 1, 100: 0, 200: 0, 500: 0 };
+const BILL_FACES = ["0", "10", "50", "100", "200", "500"];
+const BILL_FACE_SET = new Set(BILL_FACES);
 
 const CARDS_RAW = [
   { setId: "paper_money", setName: "旧朝纸币", setScore: 10, cards: [
@@ -101,10 +103,24 @@ function addMoney(money, paid) {
   }
 }
 
+// 所有客户端提交的钞票组合都必须先经过这里。服务端只接受固定面值、非负安全整数，
+// 且玩家必须真实持有对应张数；这样被篡改的客户端无法凭空造钱或透支付款。
+function validateBillSelection(money, paid) {
+  if (!paid || typeof paid !== "object" || Array.isArray(paid)) return "钞票数据格式无效";
+  for (const [face, count] of Object.entries(paid)) {
+    if (!BILL_FACE_SET.has(face)) return `不支持的钞票面值：${face}`;
+    if (!Number.isSafeInteger(count) || count < 0) return `钞票张数必须是非负整数：${face}`;
+    if (count > (money[face] || 0)) return `你没有足够的 ${face} 面值钞票`;
+  }
+  return null;
+}
+
 function deductMoneyExact(money, paid) {
+  const error = validateBillSelection(money, paid);
+  if (error) throw new Error(error);
   for (const face in paid) {
     const f = parseInt(face);
-    money[f] = Math.max(0, (money[f] || 0) - paid[face]);
+    money[f] = (money[f] || 0) - paid[face];
   }
 }
 
@@ -242,6 +258,8 @@ class GameState {
 
   // ── 行动 A：开拍 ──────────────────────────────────────────
   startAuction() {
+    if (this.phase !== "AUCTION") return { error: "当前阶段不能开拍" };
+    if (this.auctionCard) return { error: "当前古董仍在竞拍中" };
     if (this.deck.length === 0) return { error: "牌堆已空" };
     this.auctionCard = this.deck.shift();
     this.highestBid = 0;
@@ -278,6 +296,8 @@ class GameState {
 
   // 英式拍卖：出价必须高于当前最高价；玩家可在自己回合反复加价。
   placeBid(playerId, amount) {
+    if (this.phase !== "AUCTION" || !this.auctionCard) return { error: "当前没有正在进行的拍卖" };
+    if (!Number.isSafeInteger(amount) || amount <= 0) return { error: "出价必须是正整数" };
     if (this.bidTurnId !== playerId) return { error: "还没轮到你" };
     if (this.passed[playerId]) return { error: "你已退出本次竞拍" };
     if (amount <= this.highestBid) return { error: `出价须高于当前最高价 ${this.highestBid}` };
@@ -289,6 +309,7 @@ class GameState {
 
   // 放弃 = 退出本次竞拍（英式拍卖：退出后不可再回来加价）。
   passBid(playerId) {
+    if (this.phase !== "AUCTION" || !this.auctionCard) return { error: "当前没有正在进行的拍卖" };
     if (this.bidTurnId !== playerId) return { error: "还没轮到你" };
     if (this.passed[playerId]) return { error: "你已退出本次竞拍" };
     this.passed[playerId] = true;
@@ -331,8 +352,14 @@ class GameState {
   }
 
   actionSnipe(doSnipe, paid) {
-    const paidTotal = Object.entries(paid).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
+    if (this.phase !== "SNIPE" || !this.auctionCard || this.highestBidder === -1) {
+      return { error: "当前不能进行截拍结算" };
+    }
+    if (typeof doSnipe !== "boolean") return { error: "截拍选择无效" };
     if (doSnipe) {
+      const paymentError = validateBillSelection(this.currentPlayer().money, paid);
+      if (paymentError) return { error: paymentError };
+      const paidTotal = Object.entries(paid).reduce((s, [f, c]) => s + parseInt(f) * c, 0);
       if (paidTotal < this.highestBid) return this._failPayment(this.currentPlayer().playerId);
       deductMoneyExact(this.currentPlayer().money, paid);
       addMoney(this.getPlayer(this.highestBidder).money, paid);
@@ -397,6 +424,16 @@ class GameState {
 
   // ── 行动 B：私盘 ──────────────────────────────────────────
   startPrivateDeal(initiatorId, targetId, setId) {
+    if (this.phase !== "AUCTION" || this.auctionCard) return { error: "当前阶段不能发起私盘" };
+    if (this.currentPlayer().playerId !== initiatorId) return { error: "还没轮到你发起私盘" };
+    if (initiatorId === targetId) return { error: "不能与自己进行私盘" };
+    const initiator = this.getPlayer(initiatorId);
+    const target = this.getPlayer(targetId);
+    if (!initiator || !target) return { error: "私盘玩家不存在" };
+    if (!Object.prototype.hasOwnProperty.call(SET_SCORES, setId)) return { error: "古董套系无效" };
+    if (getAntiquesBySet(initiator.antiques, setId).length === 0 || getAntiquesBySet(target.antiques, setId).length === 0) {
+      return { error: "双方必须都持有该套系古董" };
+    }
     this.dealInitiator = initiatorId;
     this.dealTarget = targetId;
     this.dealSetId = setId;
@@ -411,6 +448,10 @@ class GameState {
 
   submitDealOffer(playerId, paid) {
     if (this.phase !== "PRIVATE_DEAL") return { error: "不在私盘阶段" };
+    const player = this.getPlayer(playerId);
+    if (!player) return { error: "玩家不存在" };
+    const paymentError = validateBillSelection(player.money, paid);
+    if (paymentError) return { error: paymentError };
     // 顺序规则（对齐原版牛市交易）：发起人先押注 → 目标看到其【张数】（金额保密）再暗标。
     // 废钞由此才有虚张声势的价值。已提交后不可改（张数已亮出）。
     if (playerId === this.dealInitiator) {
@@ -563,4 +604,4 @@ class GameState {
   }
 }
 
-module.exports = { GameState };
+module.exports = { GameState, validateBillSelection };

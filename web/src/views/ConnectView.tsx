@@ -13,57 +13,70 @@ export function ConnectView({ snap }: { snap: Snapshot }) {
   if (showGuide) return <GuideView onClose={() => setShowGuide(false)} />;
 
   return (
-    <div className="page page-center">
-      <div className="hero">
-        <div className="hero-glyph">🏺</div>
-        <h1>古董拍卖</h1>
-        <p className="hero-sub">开拍 · 截拍 · 私盘暗标 —— 2~5 人在线竞拍</p>
-      </div>
-      <div className="panel">
-        <label className="field">
-          <span>昵称</span>
-          <input
-            value={name}
-            maxLength={12}
-            placeholder="怎么称呼?"
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>服务器地址</span>
-          <input
-            value={server}
-            placeholder="wss://…"
-            onChange={(e) => setServer(e.target.value)}
-          />
-        </label>
-        <div className="field">
-          <span>对局界面</span>
-          <div className="mode-seg">
-            <button
-              className={snap.uiMode === "table" ? "mode-on" : ""}
-              onClick={() => client.setUiMode("table")}
-            >🀄 牌桌横屏版</button>
-            <button
-              className={snap.uiMode === "classic" ? "mode-on" : ""}
-              onClick={() => client.setUiMode("classic")}
-            >📱 经典竖屏版</button>
+    <div className="page pregame-page connect-page">
+      <main className="connect-shell">
+        <header className="hero">
+          <p className="eyebrow">PRIVATE ANTIQUE SALON · 2—5 PLAYERS</p>
+          <h1><span>古董</span><span>拍卖</span></h1>
+          <p className="hero-sub">看得见的是筹码，猜不透的是底牌。</p>
+          <div className="hero-rule" aria-hidden="true"><i /><span>开拍 · 截拍 · 私盘</span></div>
+        </header>
+
+        <section className="panel entry-panel" aria-label="进入拍卖大厅">
+          <div className="panel-heading">
+            <div><span>01</span><h2>入场登记</h2></div>
+            <button className="text-action" onClick={() => setShowGuide(true)}>先看玩法</button>
           </div>
-        </div>
-        <button
-          className="btn btn-primary btn-big"
-          disabled={!canGo}
-          onClick={() => client.connect(server, name.trim())}
-        >
-          {snap.conn === "connecting" ? "连接中…" : "进入大厅"}
-        </button>
-        <button className="btn btn-gold" onClick={() => setShowGuide(true)}>
-          ❓ 如何游玩(新手指南)
-        </button>
-        {snap.conn === "disconnected" && (
-          <p className="hint hint-error">连接断开了——服务器冷启动约需 1 分钟,稍等后重试。</p>
-        )}
-      </div>
+
+          <label className="field">
+            <span>席位称呼</span>
+            <input
+              value={name}
+              maxLength={12}
+              autoComplete="nickname"
+              placeholder="输入你的昵称"
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+
+          <div className="field">
+            <span>对局视角</span>
+            <div className="mode-seg" aria-label="选择对局界面">
+              <button
+                className={snap.uiMode === "table" ? "mode-on" : ""}
+                aria-pressed={snap.uiMode === "table"}
+                onClick={() => client.setUiMode("table")}
+              ><b>牌桌</b><small>横屏沉浸</small></button>
+              <button
+                className={snap.uiMode === "classic" ? "mode-on" : ""}
+                aria-pressed={snap.uiMode === "classic"}
+                onClick={() => client.setUiMode("classic")}
+              ><b>经典</b><small>竖屏清晰</small></button>
+            </div>
+          </div>
+
+          <details className="advanced">
+            <summary>连接设置</summary>
+            <label className="field">
+              <span>服务器地址</span>
+              <input value={server} placeholder="wss://…" onChange={(e) => setServer(e.target.value)} />
+            </label>
+          </details>
+
+          <button
+            className="btn btn-primary btn-big"
+            disabled={!canGo}
+            onClick={() => client.connect(server, name.trim())}
+          >
+            <span>{snap.conn === "connecting" ? "正在为你留席…" : "进入拍卖厅"}</span>
+            <i aria-hidden="true">→</i>
+          </button>
+          {snap.conn === "disconnected" && (
+            <p className="hint hint-error">连接暂时中断。免费服务器冷启动可能需要约 1 分钟，请稍后重试。</p>
+          )}
+        </section>
+      </main>
+      <footer className="salon-footer">收藏成套，现金不计分 · 每一次加价都可以是虚张声势</footer>
     </div>
   );
 }

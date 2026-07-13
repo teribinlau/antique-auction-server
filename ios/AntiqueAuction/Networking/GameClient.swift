@@ -264,6 +264,10 @@ final class GameClient: ObservableObject {
             self.lobbyPlayers.removeAll { $0 == name }
             banner = "\(name) 离开了房间"
 
+        case let .lobbyState(playerId, players):
+            self.myPlayerId = playerId
+            self.lobbyPlayers = players
+
         case let .error(message):
             banner = message
             // 若正处于重连尝试中收到 error（如「令牌无效」「房间不存在或已结束」），
@@ -380,7 +384,7 @@ final class GameClient: ObservableObject {
             fb.gameOver()
         // 其余事件不发反馈（大厅/同步/中间态）。
         case .roomList, .roomCreated, .joinedRoom, .rejoinedRoom,
-             .playerJoined, .playerLeft, .playerDisconnected, .playerReconnected,
+             .playerJoined, .playerLeft, .lobbyState, .playerDisconnected, .playerReconnected,
              .gameStarted, .stateUpdate, .snipePrompt,
              .privateDealStarted, .dealOfferSubmitted, .dealTie, .dealTargets,
              .unknown:

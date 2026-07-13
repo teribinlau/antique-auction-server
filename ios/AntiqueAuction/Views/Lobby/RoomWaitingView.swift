@@ -4,7 +4,8 @@ import SwiftUI
 struct RoomWaitingView: View {
     @ObservedObject var client: GameClient
 
-    private var canStart: Bool { client.lobbyPlayers.count >= 2 }
+    private var isHost: Bool { client.myPlayerId == 0 }
+    private var canStart: Bool { isHost && client.lobbyPlayers.count >= 2 }
 
     var body: some View {
         NavigationStack {
@@ -50,18 +51,26 @@ struct RoomWaitingView: View {
                 .scrollContentBackground(.hidden)   // 透出底层古董背景（iOS 16+）
 
                 VStack(spacing: 12) {
-                    Button {
-                        client.startGame()
-                    } label: {
-                        Text(canStart ? "开始游戏" : "至少需要 2 名玩家")
+                    if isHost {
+                        Button {
+                            client.startGame()
+                        } label: {
+                            Text(canStart ? "开始游戏" : "至少需要 2 名玩家")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(canStart ? Color.accentColor : Color.gray)
+                                .foregroundStyle(.black)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .disabled(!canStart)
+                    } else {
+                        Text("等待房主开始游戏")
                             .font(.headline)
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(canStart ? Color.accentColor : Color.gray)
-                            .foregroundStyle(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .disabled(!canStart)
                 }
                 .padding()
             }
